@@ -5,7 +5,7 @@ import {
   getTraps, getTrap, saveConfig, createTrap, deleteTrap, updateState, blankTrap, newEffect, pickConfig, clone,
   dcForLevel, xpInfo, esc, key, pointCell, alliance, freshState, terrainCellsOf, tokenCell, isActiveGM
 } from "./store.js";
-import { drafts, requestDraw } from "./overlay.js";
+import { drafts, requestDraw, setHover } from "./overlay.js";
 import { fireTrap, tickRound, attemptDisable, clearTerrain, activityOf } from "./engine.js";
 import { pyreReady } from "./pyre.js";
 import { TEMPLATES, HIDDENNESS } from "./templates.js";
@@ -153,6 +153,7 @@ export class SnareManager extends ApplicationV2 {
   #html() {
     const scene = this.scene;
     if (!scene) return `<div class="snare-empty">Open a scene to build traps.</div>`;
+    if (this.paint && this.draft) return this.#compactHTML();
     return `<div class="snare-shell">
       <aside class="snare-side">
         <nav class="snare-tabs" aria-label="Snare sections">
@@ -171,6 +172,41 @@ export class SnareManager extends ApplicationV2 {
         </div>
       </aside>
       <section class="snare-main">${this.wizard ? this.#wizardHTML() : this.tab === "exploration" ? this.#explorationHTML() : this.#builderHTML()}</section>
+    </div>`;
+  }
+
+  #compactHTML() {
+    const t = this.draft, pm = this.paint, w = this.wizard;
+    const e = t.effects.find((x) => x.id === pm.effectId);
+    const many = pm.mode === "trigger" || (pm.mode === "area" && e?.type === "terrain");
+    const title = pm.mode === "trigger" ? "Paint the trigger" : pm.mode === "origin" ? "Place the origin" : e?.type === "burst" ? "Pick the burst's center" : "Paint the terrain";
+    const icon = pm.mode === "trigger" ? "fa-shoe-prints" : pm.mode === "origin" ? "fa-crosshairs" : e?.type === "burst" ? "fa-bomb" : "fa-vector-square";
+    const steps = w ? this.#wizSteps() : null;
+    const count = pm.mode === "trigger" ? t.trigger.length : e?.type === "terrain" ? terrainCellsOf(t, e).length : 0;
+    const how = many
+      ? [["fa-arrow-pointer", "<b>Click</b> a square on the map to add it."],
+         ["fa-hand-pointer", "<b>Hold and drag</b> to paint several in a row."],
+         ["fa-eraser", "<b>Click a painted square</b> to remove it."],
+         ["fa-computer-mouse", "<b>Right-click</b> anywhere on the map when you're done."]]
+      : [["fa-arrow-pointer", `<b>Click one square</b> on the map${pm.mode === "origin" ? ": a slot in the wall, the ceiling, a statue's mouth" : ""}.`],
+         ["fa-computer-mouse", "<b>Right-click</b> to cancel."]];
+    let foot;
+    if (w) {
+      foot = `<button type="button" class="snare-btn ghost" data-action="wizBack"><i class="fa-solid fa-arrow-left"></i> Back</button>
+        <span class="snare-spacer"></span>
+        ${pm.mode === "origin" ? `<button type="button" class="snare-btn sm ghost" data-action="wizSkipOrigin">Skip</button>` : ""}
+        <button type="button" class="snare-btn primary" data-action="wizNext"${pm.mode === "trigger" && !count ? " disabled" : ""}>Next <i class="fa-solid fa-arrow-right"></i></button>`;
+    } else {
+      foot = `<span class="snare-spacer"></span><button type="button" class="snare-btn primary" data-action="stopPaint"><i class="fa-solid fa-check"></i> Done</button>`;
+    }
+    return `<div class="snare-compact">
+      <div class="snare-compact-h">
+        <span class="snare-card-icon"><i class="fa-solid ${icon}"></i></span>
+        <div><div class="snare-compact-title">${title}</div><div class="snare-compact-sub">${esc(t.name)}${steps ? ` · step ${steps.indexOf(w.step) + 1} of ${steps.length}` : ""}</div></div>
+      </div>
+      <ul class="snare-howto">${how.map(([i, h]) => `<li><i class="fa-solid ${i}"></i><span>${h}</span></li>`).join("")}</ul>
+      ${many ? `<div class="snare-wiz-live"><i class="fa-solid fa-paintbrush"></i><span class="snare-wiz-count">${count} square${count === 1 ? "" : "s"} painted</span></div>` : ""}
+      <div class="snare-compact-foot">${foot}</div>
     </div>`;
   }
 
@@ -463,6 +499,7 @@ export class SnareManager extends ApplicationV2 {
         if (same) return this.stopPaint();
         return this.startPaint(el.dataset.mode, el.dataset.effect || null);
       }
+      case "stopPaint": return this.stopPaint();
       case "clearTrigger": t.trigger = []; return done();
       case "clearOrigin": t.origin = null; return done();
       case "clearArea": { const e = eff(el.dataset.id); if (e) e.cells = []; return done(); }
@@ -752,6 +789,11 @@ export class SnareManager extends ApplicationV2 {
     if (!this.draft || !canvas?.ready) return;
     this.paint = { mode, effectId, op: null, last: null };
     const view = canvas.app.view;
+    if (!this._fullPos) {
+      this._fullPos = { left: this.position.left, top: this.position.top, width: this.position.width, height: this.position.height };
+      this.setPosition({ width: 360, height: "auto", left: 110, top: 70 });
+    }
+    view.style.cursor = "crosshair";
     const toCell = (ev) => {
       const p = typeof canvas.canvasCoordinatesFromClient === "function"
         ? canvas.canvasCoordinatesFromClient({ x: ev.clientX, y: ev.clientY })
@@ -765,9 +807,11 @@ export class SnareManager extends ApplicationV2 {
       this.#paintAt(toCell(ev), true);
     };
     const move = (ev) => {
+      const cell = toCell(ev);
+      setHover(cell);
       if (!(ev.buttons & 1) || !this.paint?.op) return;
       swallow(ev);
-      this.#paintAt(toCell(ev), false);
+      this.#paintAt(cell, false);
     };
     const up = () => { if (this.paint) this.paint.op = null; };
     const ctx = (ev) => swallow(ev);
@@ -778,6 +822,7 @@ export class SnareManager extends ApplicationV2 {
     view.addEventListener("contextmenu", ctx, true);
     this.#canvasHandlers = { view, down, move, up, ctx };
     this.render();
+    canvas.app.view.focus?.();
   }
 
   stopPaint(rerender = true) {
@@ -787,6 +832,13 @@ export class SnareManager extends ApplicationV2 {
       h.view.removeEventListener("pointermove", h.move, true);
       window.removeEventListener("pointerup", h.up, true);
       h.view.removeEventListener("contextmenu", h.ctx, true);
+      h.view.style.cursor = "";
+    }
+    setHover(null);
+    if (this._fullPos) {
+      const pos = this._fullPos;
+      this._fullPos = null;
+      if (this.rendered) this.setPosition(pos);
     }
     this.#canvasHandlers = null;
     const was = !!this.paint;

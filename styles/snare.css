@@ -310,6 +310,18 @@
 .snare-more[open] summary::before { content: "\25BE"; }
 .snare-more[open] { display: flex; flex-direction: column; gap: 6px; }
 
+.snare-compact { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 18px; }
+.snare-compact-h { display: flex; align-items: center; gap: 12px; }
+.snare-compact-h .snare-card-icon { background: linear-gradient(180deg, #e0c070, #c9a24a); color: var(--sn-on-gold); box-shadow: 0 0 16px rgba(212, 178, 90, 0.35); }
+.snare-compact-title { font-family: var(--sn-display); font-size: 15px; font-weight: 600; letter-spacing: 0.05em; }
+.snare-compact-sub { font-size: 12.5px; color: var(--sn-ink-faint); }
+.snare-howto { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.snare-howto li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: center; font-size: 14px; color: var(--sn-ink-dim); }
+.snare-howto li i { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: var(--sn-fill-2); color: var(--sn-gold); font-size: 12px; }
+.snare-howto b { color: var(--sn-ink); font-weight: 600; }
+.snare-compact .snare-wiz-live { margin: 0; }
+.snare-compact-foot { display: flex; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--sn-hair); }
+
 /* Chat cards */
 .snare-card { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; font-family: "Spectral", Georgia, serif; font-size: 13.5px; line-height: 1.4; }
 .snare-card > i { color: #b8913a; padding-top: 2px; }

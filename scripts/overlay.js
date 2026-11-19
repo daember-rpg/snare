@@ -5,6 +5,15 @@ let layer = null;
 /** Builder drafts shown live on the canvas before they are saved: trapId → trap. */
 export const drafts = new Map();
 let queued = false;
+let hover = null;
+
+/** The square under the cursor while painting. */
+export function setHover(cell) {
+  const k = cell ? key(cell) : null;
+  if ((hover ? key(hover) : null) === k) return;
+  hover = cell;
+  requestDraw();
+}
 
 const C = { gold: 0xd4b25a, ember: 0xc8553d, emberLight: 0xe8876d, ink: 0xefe3c8, ice: 0x8fb0c9, mud: 0x8a6a48, orange: 0xff8a4c };
 const TERRAIN_FILL = { slippery: [C.ice, 0.38], difficult: [C.mud, 0.4], greater: [C.mud, 0.6], hazardous: [C.ember, 0.32] };
@@ -118,6 +127,17 @@ export function draw() {
       root.addChild(label);
     }
   }
+  drawHover(root);
+}
+
+function drawHover(root) {
+  if (!hover || !game.user.isGM) return;
+  const gs = canvas.grid.size;
+  const g = new PIXI.Graphics();
+  const tl = cellTopLeft(hover);
+  g.lineStyle(3, C.gold, 1); g.beginFill(C.gold, 0.22);
+  g.drawRoundedRect(tl.x + 2, tl.y + 2, gs - 4, gs - 4, Math.max(3, gs * 0.1)); g.endFill();
+  root.addChild(g);
 }
 
 function dashed(g, a, b, dash) {
