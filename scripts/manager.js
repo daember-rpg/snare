@@ -800,27 +800,37 @@ export class SnareManager extends ApplicationV2 {
         : canvas.stage.worldTransform.applyInverse(new PIXI.Point(ev.clientX - view.getBoundingClientRect().left, ev.clientY - view.getBoundingClientRect().top));
       return pointCell(p);
     };
+    // Listen on window in the capture phase: it runs before Foundry's and PIXI's own handlers,
+    // so a click on a token or an empty square is always ours while painting.
+    const onBoard = (ev) => ev.target === view;
+    const swallow = (ev) => { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); };
     const down = (ev) => {
-      if (ev.button === 2) { this.stopPaint(); swallow(ev); return; }
+      if (!onBoard(ev)) return;
+      if (ev.button === 2) { swallow(ev); this.stopPaint(); return; }
       if (ev.button !== 0) return;
       swallow(ev);
       this.#paintAt(toCell(ev), true);
     };
     const move = (ev) => {
+      if (!onBoard(ev)) { setHover(null); return; }
       const cell = toCell(ev);
       setHover(cell);
       if (!(ev.buttons & 1) || !this.paint?.op) return;
       swallow(ev);
       this.#paintAt(cell, false);
     };
-    const up = () => { if (this.paint) this.paint.op = null; };
-    const ctx = (ev) => swallow(ev);
-    const swallow = (ev) => { ev.preventDefault(); ev.stopImmediatePropagation(); };
-    view.addEventListener("pointerdown", down, true);
-    view.addEventListener("pointermove", move, true);
+    const up = (ev) => {
+      if (this.paint?.op && onBoard(ev)) swallow(ev);
+      if (this.paint) this.paint.op = null;
+    };
+    const ctx = (ev) => { if (onBoard(ev)) swallow(ev); };
+    const block = (ev) => { if (onBoard(ev) && ev.button === 0) swallow(ev); };
+    for (const type of ["mousedown", "click", "dblclick"]) window.addEventListener(type, block, true);
+    window.addEventListener("pointerdown", down, true);
+    window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
-    view.addEventListener("contextmenu", ctx, true);
-    this.#canvasHandlers = { view, down, move, up, ctx };
+    window.addEventListener("contextmenu", ctx, true);
+    this.#canvasHandlers = { view, down, move, up, ctx, block };
     this.render();
     canvas.app.view.focus?.();
   }
@@ -828,10 +838,11 @@ export class SnareManager extends ApplicationV2 {
   stopPaint(rerender = true) {
     const h = this.#canvasHandlers;
     if (h) {
-      h.view.removeEventListener("pointerdown", h.down, true);
-      h.view.removeEventListener("pointermove", h.move, true);
+      window.removeEventListener("pointerdown", h.down, true);
+      window.removeEventListener("pointermove", h.move, true);
       window.removeEventListener("pointerup", h.up, true);
-      h.view.removeEventListener("contextmenu", h.ctx, true);
+      window.removeEventListener("contextmenu", h.ctx, true);
+      for (const type of ["mousedown", "click", "dblclick"]) window.removeEventListener(type, h.block, true);
       h.view.style.cursor = "";
     }
     setHover(null);
