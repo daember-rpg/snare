@@ -8,6 +8,7 @@ import {
 import { drafts, requestDraw } from "./overlay.js";
 import { fireTrap, tickRound, attemptDisable, clearTerrain, activityOf } from "./engine.js";
 import { pyreReady } from "./pyre.js";
+import { TEMPLATES, HIDDENNESS } from "./templates.js";
 
 const { ApplicationV2 } = foundry.applications.api;
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
@@ -56,6 +57,7 @@ export class SnareManager extends ApplicationV2 {
   draft = null;
   paint = null;
   createFrom = "blank";
+  wizard = null;
   hazards = null;
   #saveTimer = null;
   #listeners = false;
@@ -109,7 +111,7 @@ export class SnareManager extends ApplicationV2 {
   async _renderHTML() {
     await this.#loadHazards();
     if (this.selectedId && !getTrap(this.scene, this.selectedId)) this.#select(null);
-    if (!this.selectedId && this.tab === "traps") {
+    if (!this.selectedId && this.tab === "traps" && !this.wizard) {
       const first = getTraps(this.scene)[0];
       if (first) this.#select(first.id);
     }
@@ -129,7 +131,7 @@ export class SnareManager extends ApplicationV2 {
     this.#flush();
     this.stopPaint(false);
     if (this.selectedId) drafts.delete(this.selectedId);
-    this.selectedId = null; this.draft = null;
+    this.selectedId = null; this.draft = null; this.wizard = null;
     this.#listeners = false;
     requestDraw();
     super._onClose?.(options);
@@ -160,12 +162,15 @@ export class SnareManager extends ApplicationV2 {
         <div class="snare-scene-name">${esc(scene.name)}</div>
         <div class="snare-list-items">${this.#listItems()}</div>
         <div class="snare-create">
-          <label for="snare-create-from">New trap from</label>
-          <select id="snare-create-from" data-create-from>${this.#createOptions()}</select>
-          <button type="button" class="snare-btn primary wide" data-action="create"><i class="fa-solid fa-plus"></i> Create trap</button>
+          <button type="button" class="snare-btn primary wide" data-action="wizStart"${this.wizard ? " disabled" : ""}><i class="fa-solid fa-wand-magic-sparkles"></i> New trap</button>
+          <details class="snare-more">
+            <summary>Or start from…</summary>
+            <select id="snare-create-from" aria-label="Start from" data-create-from>${this.#createOptions()}</select>
+            <button type="button" class="snare-btn sm wide" data-action="create"><i class="fa-solid fa-plus"></i> Create</button>
+          </details>
         </div>
       </aside>
-      <section class="snare-main">${this.tab === "exploration" ? this.#explorationHTML() : this.#builderHTML()}</section>
+      <section class="snare-main">${this.wizard ? this.#wizardHTML() : this.tab === "exploration" ? this.#explorationHTML() : this.#builderHTML()}</section>
     </div>`;
   }
 
@@ -182,7 +187,7 @@ export class SnareManager extends ApplicationV2 {
     let lib = [];
     try { lib = game.settings.get(MODULE_ID, "library") ?? []; } catch (err) { lib = []; }
     const o = (v, l) => `<option value="${esc(v)}"${this.createFrom === v ? " selected" : ""}>${esc(l)}</option>`;
-    let html = o("blank", "Blank trap");
+    let html = o("blank", "Empty trap (full builder)");
     if (lib.length) html += `<optgroup label="My library">${lib.map((t, i) => o(`lib:${i}`, t.name)).join("")}</optgroup>`;
     if (this.hazards?.length) html += `<optgroup label="PF2e hazards">${this.hazards.map((h) => o(`comp:${h.id}`, `${h.name} (${h.level}${h.complex ? ", complex" : ""})`)).join("")}</optgroup>`;
     return html;
@@ -379,6 +384,7 @@ export class SnareManager extends ApplicationV2 {
     root.addEventListener("change", (ev) => {
       const el = ev.target;
       if (el.dataset.createFrom !== undefined) { this.createFrom = el.value; return; }
+      if (el.dataset.wizLevel !== undefined) { this.wizard.level = Math.max(-1, Math.min(25, Number(el.value) || 0)); return; }
       if (el.dataset.activity) {
         const a = game.actors.get(el.dataset.activity);
         a?.setFlag(MODULE_ID, "activity", el.value);
@@ -415,8 +421,15 @@ export class SnareManager extends ApplicationV2 {
     const eff = (id) => t?.effects.find((e) => e.id === id);
     const done = () => { this.#queueSave(); this.render(); };
     switch (action) {
-      case "tab": this.tab = el.dataset.tab; this.stopPaint(false); return this.render();
-      case "select": this.tab = "traps"; this.#select(el.dataset.id); return this.render();
+      case "tab": if (this.wizard) return; this.tab = el.dataset.tab; this.stopPaint(false); return this.render();
+      case "select": if (this.wizard) return ui.notifications.info("Snare: finish or cancel the new trap first."); this.tab = "traps"; this.#select(el.dataset.id); return this.render();
+      case "wizStart": return this.#wizStart();
+      case "wizPick": this.wizard.tplId = el.dataset.tpl; return this.render();
+      case "wizHidden": return this.#wizHidden(Number(el.dataset.id));
+      case "wizNext": return this.#wizNext();
+      case "wizBack": return this.#wizBack();
+      case "wizCancel": return this.#wizCancel();
+      case "wizSkipOrigin": this.draft.origin = null; this.stopPaint(false); return this.#wizGo(1);
       case "create": return this.#create();
       case "delete": {
         const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: "Delete trap" }, content: `<p>Delete <b>${esc(t.name)}</b> from this scene?</p>`, rejectClose: false });
@@ -552,6 +565,186 @@ export class SnareManager extends ApplicationV2 {
     }
   }
 
+  /* ---------------- guided creation ---------------- */
+
+  #partyLevel() {
+    return Math.max(1, ...game.actors.filter((a) => a.type === "character" && a.hasPlayerOwner).map((a) => a.level ?? 1));
+  }
+
+  #wizSteps() {
+    const tpl = TEMPLATES.find((x) => x.id === this.wizard?.tplId);
+    return ["type", "where", ...(tpl?.origin ? ["origin"] : []), "hidden", "who", "review"];
+  }
+
+  #wizStart() {
+    this.#flush();
+    this.stopPaint(false);
+    drafts.delete(this.selectedId);
+    this.selectedId = null; this.draft = null;
+    this.tab = "traps";
+    this.wizard = { step: "type", tplId: null, level: this.#partyLevel(), hidden: 1, trapId: null, builtFor: null };
+    this.render();
+  }
+
+  async #wizCancel() {
+    this.stopPaint(false);
+    const id = this.wizard?.trapId;
+    this.wizard = null;
+    if (id) { drafts.delete(id); this.draft = null; this.selectedId = null; await deleteTrap(this.scene, id); }
+    this.render();
+  }
+
+  /** Applies the chosen template to the draft (again, if the GM went back and picked another). */
+  async #wizBuild() {
+    const w = this.wizard;
+    const tpl = TEMPLATES.find((x) => x.id === w.tplId);
+    const signature = `${w.tplId}:${w.level}`;
+    if (w.trapId && w.builtFor === signature) return;
+    const h = HIDDENNESS.find((x) => x.id === w.hidden) ?? HIDDENNESS[1];
+    const dc = dcForLevel(w.level) + h.adj;
+    const fields = {
+      name: tpl.label, level: w.level, partyLevel: this.#partyLevel(), magical: !!tpl.magical,
+      stealthDC: dc, minProf: h.minProf, effects: tpl.build(w.level),
+      disable: [{ skill: tpl.skill, dc, minProf: Math.max(1, h.minProf) }]
+    };
+    if (!w.trapId) {
+      const trap = { ...blankTrap(w.level), ...fields };
+      await createTrap(this.scene, trap);
+      w.trapId = trap.id;
+      this.#select(trap.id);
+    } else {
+      Object.assign(this.draft, fields, { trigger: this.draft.trigger, origin: this.draft.origin });
+      this.#queueSave();
+    }
+    w.builtFor = signature;
+  }
+
+  #wizHidden(id) {
+    const h = HIDDENNESS.find((x) => x.id === id);
+    if (!h || !this.draft) return;
+    this.wizard.hidden = id;
+    const dc = dcForLevel(this.draft.level) + h.adj;
+    this.draft.minProf = h.minProf;
+    this.draft.stealthDC = dc;
+    this.draft.disable.forEach((d) => { d.dc = dc; d.minProf = Math.max(1, h.minProf); });
+    this.#queueSave();
+    this.render();
+  }
+
+  async #wizGo(delta) {
+    const steps = this.#wizSteps();
+    const i = steps.indexOf(this.wizard.step);
+    const next = steps[Math.max(0, Math.min(steps.length - 1, i + delta))];
+    this.stopPaint(false);
+    this.wizard.step = next;
+    if (next === "where") return this.startPaint("trigger");
+    if (next === "origin") return this.startPaint("origin");
+    return this.render();
+  }
+
+  async #wizNext() {
+    const w = this.wizard;
+    if (w.step === "type") {
+      if (!w.tplId) return ui.notifications.info("Snare: pick what kind of trap it is.");
+      await this.#wizBuild();
+    }
+    if (w.step === "where" && !this.draft?.trigger.length) return ui.notifications.info("Snare: paint at least one square on the map.");
+    if (w.step === "review") {
+      this.#flush();
+      this.wizard = null;
+      ui.notifications.info(`Snare: ${this.draft?.name ?? "the trap"} is armed.`);
+      return this.render();
+    }
+    return this.#wizGo(1);
+  }
+
+  #wizBack() {
+    if (this.wizard.step === "type") return;
+    return this.#wizGo(-1);
+  }
+
+  #summary(t) {
+    const n = t.trigger.length;
+    const parts = [];
+    parts.push(`When ${t.triggeredBy === "party" ? "a party member" : "someone"} steps on the <b>${n} square${n === 1 ? "" : "s"}</b>${t.triggerIgnore.length ? ` (except ${t.triggerIgnore.map((id) => esc(this.scene.tokens.get(id)?.name ?? "?")).join(", ")})` : ""}:`);
+    const lines = t.effects.map((e) => {
+      if (e.type === "strike") return `${t.origin ? "a projectile flies from the origin" : "it strikes"}: attack <b>+${e.attack}</b>, <b>${esc(e.damage)} ${e.dtype}</b>`;
+      if (e.type === "burst") return e.radius > 0
+        ? `a burst of ${e.radius * 5} ft: <b>${e.basic ? "basic " : ""}${cap(e.save)} DC ${e.dc}</b>, <b>${esc(e.damage)} ${e.dtype}</b>`
+        : `<b>${cap(e.save)} DC ${e.dc}</b>; on a failure, <b>${esc(e.damage)} ${e.dtype}</b>`;
+      if (e.type === "condition") return `${e.appliesTo === "failed" ? "whoever fails or is hit" : "the target"} becomes <b>${CONDITIONS.find(([s]) => s === e.condition)?.[1] ?? e.condition}${VALUED.includes(e.condition) ? ` ${e.value}` : ""}</b>`;
+      return `the floor becomes <b>${TERRAIN[e.terrain].toLowerCase()}</b>${e.affects !== "all" ? ` (${e.affects === "enemies" ? "enemies only" : "party only"})` : ""}${e.exemptTokens.length || e.exemptTraits.length ? ", with exceptions" : ""}`;
+    });
+    const find = t.minProf === 0 ? `Anyone can notice it (DC ${t.stealthDC}).` : `Found only by characters Searching with ${RANKS[t.minProf]} Perception (DC ${t.stealthDC}).`;
+    const dis = t.disable.map((d) => `${cap(d.skill)} DC ${d.dc}${d.minProf ? ` (${RANKS[d.minProf]})` : ""}`).join(" or ");
+    return `<p>${parts.join("")}</p>${lines.length ? `<ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>` : `<p class="snare-muted">No effects yet. Add them in the builder after finishing.</p>`}
+      <p>${find}</p><p>Disable: ${dis || "nothing set"}.</p>`;
+  }
+
+  #wizardHTML() {
+    const w = this.wizard;
+    const steps = this.#wizSteps();
+    const idx = steps.indexOf(w.step);
+    const t = this.draft;
+    const LABELS = { type: "Type", where: "Trigger", origin: "Origin", hidden: "Hidden", who: "Who", review: "Review" };
+    const dots = `<ol class="snare-steps">${steps.map((s, i) => `<li class="${i < idx ? "done" : i === idx ? "now" : ""}"><span>${i < idx ? '<i class="fa-solid fa-check"></i>' : i + 1}</span>${LABELS[s]}</li>`).join("")}</ol>`;
+    let body = "", nextLabel = "Next", nextDisabled = false;
+
+    if (w.step === "type") {
+      body = `<h2 class="snare-wiz-q">What kind of trap is it?</h2>
+        <div class="snare-cards">${TEMPLATES.map((tp) => `<button type="button" class="snare-card-btn${w.tplId === tp.id ? " is-on" : ""}" data-action="wizPick" data-tpl="${tp.id}" aria-pressed="${w.tplId === tp.id}">
+          <span class="snare-card-icon"><i class="fa-solid ${tp.icon}"></i></span><span class="snare-card-label">${tp.label}</span><span class="snare-card-blurb">${tp.blurb}</span></button>`).join("")}</div>
+        <div class="snare-wiz-level"><label for="snare-wiz-level">Trap level</label><input type="number" id="snare-wiz-level" data-wiz-level value="${w.level}" min="-1" max="25"><small>Your party is level ${this.#partyLevel()}. Damage and DCs follow the level.</small></div>`;
+      nextDisabled = !w.tplId;
+    } else if (w.step === "where") {
+      body = `<h2 class="snare-wiz-q">Where is the trigger?</h2>
+        <p class="snare-wiz-help">Click or drag on the map to paint the squares that set it off: a pressure plate, a tripwire, a chest. Click a painted square again to remove it.</p>
+        <div class="snare-wiz-live"><i class="fa-solid fa-paintbrush"></i><span class="snare-wiz-count">${t.trigger.length} square${t.trigger.length === 1 ? "" : "s"} painted</span>${t.trigger.length ? `<button type="button" class="snare-btn sm ghost" data-action="clearTrigger">Clear</button>` : ""}</div>`;
+      nextDisabled = !t.trigger.length;
+    } else if (w.step === "origin") {
+      body = `<h2 class="snare-wiz-q">Where does the attack come from?</h2>
+        <p class="snare-wiz-help">Click one square on the map: a slot in the wall, the ceiling, a statue's mouth. It can be far from the trigger.</p>
+        <div class="snare-wiz-live"><i class="fa-solid fa-crosshairs"></i><span>${t.origin ? "Origin placed. Click again to move it." : "Waiting for a click on the map…"}</span>
+          ${t.origin ? `<button type="button" class="snare-btn sm" data-action="paint" data-mode="origin" data-effect="">Move it</button>` : ""}</div>
+        <button type="button" class="snare-btn sm ghost" data-action="wizSkipOrigin">Skip: it comes from the trigger itself</button>`;
+    } else if (w.step === "hidden") {
+      body = `<h2 class="snare-wiz-q">How well hidden is it?</h2>
+        <div class="snare-cards three">${HIDDENNESS.map((h) => `<button type="button" class="snare-card-btn${w.hidden === h.id ? " is-on" : ""}" data-action="wizHidden" data-id="${h.id}" aria-pressed="${w.hidden === h.id}">
+          <span class="snare-card-icon"><i class="fa-solid ${h.icon}"></i></span><span class="snare-card-label">${h.label}</span><span class="snare-card-blurb">${h.blurb}</span><span class="snare-card-dc">DC ${dcForLevel(t.level) + h.adj}</span></button>`).join("")}</div>`;
+    } else if (w.step === "who") {
+      const tokens = this.scene.tokens.filter((d) => d.actor).sort((a, b) => a.name.localeCompare(b.name));
+      const chips = (list, action, extra = "") => tokens.map((d) => `<button type="button" class="snare-chip${list.includes(d.id) ? " on" : ""}" data-action="${action}" data-token="${d.id}" ${extra} aria-pressed="${list.includes(d.id)}"><span class="snare-dot ${alliance(d.actor)}"></span>${esc(d.name)}</button>`).join("") || `<span class="snare-muted small">No tokens on this scene.</span>`;
+      const ter = t.effects.map((e, i) => [e, i]).filter(([e]) => e.type === "terrain");
+      body = `<h2 class="snare-wiz-q">Who does it affect?</h2>
+        <div class="snare-row">${field("Who can set it off", "triggeredBy", sel("triggeredBy", t.triggeredBy, [["any", "Any creature"], ["party", "Only the party"]]))}</div>
+        <div class="snare-field"><span>Never sets it off (for example, whoever built it)</span><div class="snare-chips">${chips(t.triggerIgnore, "toggleIgnore")}</div></div>
+        ${ter.map(([e, i]) => `<div class="snare-wiz-sub"><h3><i class="fa-solid fa-snowflake"></i> The ${TERRAIN[e.terrain].toLowerCase()}</h3>
+          ${field("Who it affects", `effects.${i}.affects`, sel(`effects.${i}.affects`, e.affects, [["all", "Everyone"], ["enemies", "Enemies only"], ["party", "Party only"]]))}
+          <div class="snare-field"><span>These move through it normally</span><div class="snare-chips">${chips(e.exemptTokens, "toggleExempt", `data-id="${e.id}"`)}</div></div>
+          <div class="snare-field"><label for="snare-trait-${e.id}">So do creatures with these traits</label>
+            <div class="snare-chips">${e.exemptTraits.map((tr) => `<span class="snare-chip">${esc(tr)}<button type="button" data-action="removeTrait" data-id="${e.id}" data-trait="${esc(tr)}" aria-label="Remove ${esc(tr)}"><i class="fa-solid fa-xmark"></i></button></span>`).join("")}</div>
+            <input type="text" id="snare-trait-${e.id}" data-trait-input="${e.id}" placeholder="Type a trait and press Enter (cold, incorporeal…)"></div></div>`).join("")}`;
+    } else if (w.step === "review") {
+      body = `<h2 class="snare-wiz-q">Ready to arm it?</h2>
+        ${field("Name", "name", txt("name", t.name))}
+        <div class="snare-summary">${this.#summary(t)}</div>
+        ${chk("confirm", t.confirm, "Ask me before it fires (players see nothing until you decide)")}
+        <p class="snare-muted small">Everything can be changed later in the builder: damage, DCs, more effects, terrain areas.</p>`;
+      nextLabel = "Arm the trap";
+    }
+
+    return `<div class="snare-wizard">
+      ${dots}
+      <div class="snare-wiz-body">${body}</div>
+      <div class="snare-wiz-foot">
+        <button type="button" class="snare-btn ghost" data-action="wizCancel">Cancel</button>
+        <span class="snare-spacer"></span>
+        ${idx > 0 ? `<button type="button" class="snare-btn" data-action="wizBack"><i class="fa-solid fa-arrow-left"></i> Back</button>` : ""}
+        <button type="button" class="snare-btn primary" data-action="wizNext"${nextDisabled ? " disabled" : ""}>${nextLabel} ${w.step === "review" ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-arrow-right"></i>'}</button>
+      </div>
+    </div>`;
+  }
+
   /* ---------------- painting on the canvas ---------------- */
 
   startPaint(mode, effectId = null) {
@@ -623,6 +816,11 @@ export class SnareManager extends ApplicationV2 {
       toggle(e.cells);
     }
     this.#queueSave();
+    const wc = this.element?.querySelector(".snare-wiz-count");
+    if (wc && pm.mode === "trigger") wc.textContent = `${t.trigger.length} square${t.trigger.length === 1 ? "" : "s"} painted`;
+    if (wc && pm.mode === "area") { const e = t.effects.find((x) => x.id === pm.effectId); if (e) wc.textContent = `${terrainCellsOf(t, e).length} squares`; }
+    const next = this.element?.querySelector("[data-action=wizNext]");
+    if (next && this.wizard?.step === "where") next.disabled = !t.trigger.length;
     const count = this.element?.querySelector(".snare-sec .snare-inline .snare-muted");
     if (count && pm.mode === "trigger") count.textContent = `${t.trigger.length} trigger square${t.trigger.length === 1 ? "" : "s"}`;
   }
