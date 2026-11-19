@@ -1,0 +1,263 @@
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap");
+
+/* Snare — Embermark in the Triad dialect: smoked glass, parchment ink, a gold thread, ember for danger. */
+.snare-app,
+.snare-dialog {
+  --sn-glass: rgba(20, 17, 15, 0.94);
+  --sn-fill: rgba(255, 255, 255, 0.035);
+  --sn-fill-2: rgba(255, 255, 255, 0.065);
+  --sn-fill-3: rgba(255, 255, 255, 0.11);
+  --sn-hair: rgba(255, 255, 255, 0.08);
+  --sn-hair-2: rgba(255, 255, 255, 0.14);
+  --sn-ink: #efe3c8;
+  --sn-ink-dim: rgba(239, 227, 200, 0.66);
+  --sn-ink-faint: rgba(239, 227, 200, 0.42);
+  --sn-on-gold: #1c1712;
+  --sn-gold: #d4b25a;
+  --sn-gold-light: #ecd28a;
+  --sn-gold-soft: rgba(212, 178, 90, 0.15);
+  --sn-gold-line: rgba(212, 178, 90, 0.45);
+  --sn-ember: #c8553d;
+  --sn-ember-light: #e8876d;
+  --sn-ember-soft: rgba(200, 85, 61, 0.2);
+  --sn-moss: #8a9a5b;
+  --sn-moss-light: #adbd80;
+  --sn-display: "Cinzel", "Palatino Linotype", serif;
+  --sn-body: "Spectral", Georgia, serif;
+}
+
+.application.snare-app {
+  background: radial-gradient(120% 240px at 0 0, rgba(212, 178, 90, 0.07), transparent 70%), var(--sn-glass);
+  border: 1px solid var(--sn-hair);
+  border-radius: 16px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: var(--sn-ink);
+  font-family: var(--sn-body);
+  backdrop-filter: blur(12px) saturate(120%);
+  overflow: hidden;
+}
+.application.snare-app::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent 4%, var(--sn-gold-line) 30%, rgba(212, 178, 90, 0.2) 70%, transparent 96%);
+  pointer-events: none;
+}
+.application.snare-app .window-header {
+  background: transparent;
+  border-bottom: 1px solid var(--sn-hair);
+  color: var(--sn-ink);
+  padding: 8px 14px;
+}
+.application.snare-app .window-header .window-title {
+  font-family: var(--sn-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.application.snare-app .window-header .window-icon { color: var(--sn-gold); }
+.application.snare-app .window-content {
+  padding: 0;
+  background: transparent;
+  color: var(--sn-ink);
+  font-size: 14px;
+  line-height: 1.4;
+  overflow: hidden;
+}
+
+/* Neutralize Foundry's global button styles; :where keeps specificity at zero. */
+:where(.snare-app) button {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+}
+:where(.snare-app) button:focus-visible { outline: 1px solid var(--sn-gold); outline-offset: 2px; }
+.snare-app button[disabled] { opacity: 0.35; cursor: default; }
+
+.snare-shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 100%; }
+.snare-side {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 12px; border-right: 1px solid var(--sn-hair);
+  background: rgba(0, 0, 0, 0.18); overflow: hidden;
+}
+.snare-main { overflow-y: auto; padding: 14px 18px 24px; scrollbar-width: thin; scrollbar-color: rgba(212, 178, 90, 0.3) transparent; }
+.snare-empty { display: grid; place-items: center; gap: 8px; text-align: center; padding: 60px 20px; color: var(--sn-ink-dim); }
+.snare-empty i { font-size: 28px; color: var(--sn-gold); }
+
+/* Tabs: one segmented pill */
+.snare-tabs { display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(0, 0, 0, 0.3); box-shadow: inset 0 0 0 1px var(--sn-hair); }
+.snare-app .snare-tab {
+  flex: 1; gap: 6px; height: 28px; border-radius: 999px;
+  font-family: var(--sn-display); font-size: 9.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--sn-ink-dim); transition: background-color 0.15s ease, color 0.15s ease;
+}
+.snare-app .snare-tab:hover { color: var(--sn-ink); background: var(--sn-fill-2); }
+.snare-app .snare-tab.is-on { background: linear-gradient(180deg, #e0c070, #c9a24a); color: var(--sn-on-gold); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+
+.snare-scene-name { font-family: var(--sn-display); font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--sn-ink-faint); padding: 4px 6px 0; }
+.snare-list-items { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; scrollbar-width: thin; }
+.snare-app .snare-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: 8px 10px; border-radius: 12px; transition: background-color 0.15s ease;
+}
+.snare-app .snare-item:hover { background: var(--sn-fill); }
+.snare-app .snare-item.is-on { background: var(--sn-gold-soft); box-shadow: inset 0 0 0 1px var(--sn-gold-line); }
+.snare-item-name { font-family: var(--sn-display); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; }
+.snare-item-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--sn-ink-faint); }
+.snare-create { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--sn-hair); }
+.snare-create label { font-size: 12px; color: var(--sn-ink-dim); }
+
+/* Buttons */
+.snare-app .snare-btn {
+  gap: 7px; height: 32px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid var(--sn-hair-2); background: var(--sn-fill-2); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  font-family: var(--sn-display); font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  white-space: nowrap; transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+.snare-app .snare-btn:hover { border-color: var(--sn-gold-line); background: var(--sn-gold-soft); color: var(--sn-gold-light); }
+.snare-app .snare-btn:active { transform: scale(0.97); }
+.snare-app .snare-btn.sm { height: 26px; padding: 0 11px; font-size: 9.5px; }
+.snare-app .snare-btn.wide { width: 100%; }
+.snare-app .snare-btn.primary,
+.snare-app .snare-btn.on {
+  background: linear-gradient(180deg, #e0c070, #c9a24a); border-color: rgba(255, 230, 160, 0.5); color: var(--sn-on-gold);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 4px 14px rgba(212, 178, 90, 0.25);
+}
+.snare-app .snare-btn.primary:hover,
+.snare-app .snare-btn.on:hover { background: linear-gradient(180deg, #ebcd80, #d4ad55); color: var(--sn-on-gold); }
+.snare-app .snare-btn.ghost { background: transparent; border-color: transparent; box-shadow: none; color: var(--sn-ink-dim); }
+.snare-app .snare-btn.ghost:hover { background: var(--sn-fill-2); border-color: var(--sn-hair-2); color: var(--sn-ink); }
+.snare-app .snare-icon { width: 28px; height: 28px; border-radius: 50%; color: var(--sn-ink-faint); transition: background-color 0.15s ease, color 0.15s ease; flex: 0 0 auto; }
+.snare-app .snare-icon:hover { background: var(--sn-fill-3); color: var(--sn-ink); }
+.snare-app .snare-icon.danger:hover { background: var(--sn-ember-soft); color: var(--sn-ember-light); }
+
+/* Inputs */
+.snare-app input[type="text"],
+.snare-app input[type="number"] {
+  width: 100%; height: 34px; padding: 0 12px; border: 0; border-radius: 10px;
+  background: rgba(0, 0, 0, 0.32); box-shadow: inset 0 0 0 1px var(--sn-hair-2);
+  color: var(--sn-ink); font-family: var(--sn-body); font-size: 14px; outline: none;
+  font-variant-numeric: tabular-nums lining-nums; transition: box-shadow 0.2s ease;
+}
+.snare-app input[type="text"]::placeholder { color: var(--sn-ink-faint); }
+.snare-app input[type="text"]:focus,
+.snare-app input[type="number"]:focus { box-shadow: inset 0 0 0 1px var(--sn-gold-line), 0 0 0 3px var(--sn-gold-soft); }
+.snare-app select {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 34px; padding: 0 28px 0 14px;
+  border: 0; border-radius: 999px; color: var(--sn-ink); font-family: var(--sn-body); font-size: 13.5px; cursor: pointer; outline: none;
+  background: var(--sn-fill-2) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23d4b25a' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 11px center / 9px 6px;
+  box-shadow: inset 0 0 0 1px var(--sn-hair-2); transition: box-shadow 0.2s ease, background-color 0.15s ease;
+}
+.snare-app select:hover,
+.snare-app select:focus { background-color: var(--sn-gold-soft); box-shadow: inset 0 0 0 1px var(--sn-gold-line); }
+.snare-app select option,
+.snare-app select optgroup { background: #1c1712; color: var(--sn-ink); }
+.snare-check { display: flex; align-items: flex-start; gap: 9px; margin: 2px 0 10px; cursor: pointer; font-size: 14px; }
+.snare-check input { width: 15px; height: 15px; margin: 3px 0 0; accent-color: #d4b25a; }
+
+/* Builder */
+.snare-head { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
+.snare-app .snare-title-input {
+  flex: 1; height: 38px; background: transparent; box-shadow: none;
+  font-family: var(--sn-display); font-size: 17px; font-weight: 600; letter-spacing: 0.06em; padding: 0 8px;
+}
+.snare-app .snare-title-input:hover { background: var(--sn-fill); }
+.snare-state { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: var(--sn-fill); box-shadow: inset 0 0 0 1px var(--sn-hair); }
+.snare-state-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.snare-spacer { flex: 1; }
+.snare-disarm { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; padding-top: 4px; }
+.snare-disarm .snare-field { margin: 0; }
+.snare-painting {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 9px 12px; border-radius: 12px;
+  background: var(--sn-gold-soft); box-shadow: inset 0 0 0 1px var(--sn-gold-line); color: var(--sn-gold-light); font-size: 13.5px;
+}
+.snare-sec { padding: 16px 0 6px; border-top: 1px solid var(--sn-hair); margin-top: 14px; }
+.snare-sec.first { border-top: 0; margin-top: 0; padding-top: 4px; }
+.snare-sec h3 {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 12px; border: 0; padding: 0;
+  font-family: var(--sn-display); font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--sn-ink-faint);
+}
+.snare-sec h3 i { color: var(--sn-gold); }
+.snare-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.snare-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; font-size: 12.5px; color: var(--sn-ink-dim); }
+.snare-field small { font-size: 12px; font-style: italic; color: var(--sn-ink-faint); line-height: 1.35; }
+.snare-inline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.snare-suggest { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: -2px 0 12px; font-size: 12.5px; color: var(--sn-ink-faint); }
+.snare-xp { display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-radius: 12px; background: var(--sn-fill); box-shadow: inset 0 0 0 1px var(--sn-hair); font-size: 13px; }
+.snare-xp span:first-child { font-family: var(--sn-display); font-size: 9.5px; font-weight: 700; letter-spacing: 0.14em; color: var(--sn-ink-faint); }
+.snare-xp b { font-family: var(--sn-display); font-size: 21px; color: var(--sn-gold-light); text-shadow: 0 0 14px rgba(212, 178, 90, 0.35); font-variant-numeric: tabular-nums lining-nums; }
+.snare-notes { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.22); font-size: 13px; color: var(--sn-ink-dim); }
+.snare-muted { color: var(--sn-ink-dim); }
+.snare-muted.small, .snare-app .small { font-size: 12.5px; }
+
+.snare-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.snare-app .snare-chip,
+.snare-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid transparent; background: var(--sn-fill-2); color: var(--sn-ink-dim); font-size: 12.5px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.snare-app button.snare-chip:hover { background: var(--sn-fill-3); color: var(--sn-ink); }
+.snare-app .snare-chip.on { background: var(--sn-gold-soft); border-color: var(--sn-gold-line); color: var(--sn-gold-light); }
+.snare-app .snare-chip button { color: var(--sn-ink-faint); }
+.snare-app .snare-chip button:hover { color: var(--sn-ink); }
+.snare-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sn-ember); box-shadow: 0 0 6px rgba(200, 85, 61, 0.6); }
+.snare-dot.party { background: var(--sn-moss); box-shadow: 0 0 6px rgba(138, 154, 91, 0.6); }
+
+.snare-pill {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 9px; border-radius: 999px;
+  font-family: var(--sn-display); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+}
+.snare-pill.armed { background: var(--sn-ember-soft); color: var(--sn-ember-light); box-shadow: inset 0 0 0 1px rgba(200, 85, 61, 0.4); }
+.snare-pill.triggered { background: var(--sn-gold-soft); color: var(--sn-gold-light); box-shadow: inset 0 0 0 1px var(--sn-gold-line); }
+.snare-pill.disabled { background: rgba(138, 154, 91, 0.2); color: var(--sn-moss-light); box-shadow: inset 0 0 0 1px rgba(138, 154, 91, 0.4); }
+.snare-pill.spent { background: var(--sn-fill-2); color: var(--sn-ink-dim); }
+
+.snare-effect { margin-bottom: 10px; border-radius: 14px; background: var(--sn-fill); box-shadow: inset 0 0 0 1px var(--sn-hair); }
+.snare-effect-h { display: flex; align-items: center; gap: 8px; padding: 7px 8px 7px 12px; border-bottom: 1px solid var(--sn-hair); }
+.snare-effect-num { width: 12px; font-family: var(--sn-display); font-size: 12px; color: var(--sn-ink-faint); text-align: center; }
+.snare-effect-icon {
+  width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--sn-gold-soft); box-shadow: 0 0 0 1px var(--sn-gold-line); color: var(--sn-gold-light);
+}
+.snare-effect-title { flex: 1; font-family: var(--sn-display); font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+.snare-effect-b { padding: 12px 14px 4px; }
+.snare-addrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.snare-drow { display: grid; grid-template-columns: 1.3fr 0.7fr 1fr 28px; gap: 8px; align-items: center; margin-bottom: 8px; }
+
+.snare-table { width: 100%; border-collapse: separate; border-spacing: 0 2px; font-size: 14px; background: none; border: 0; }
+.snare-table th { font-family: var(--sn-display); font-size: 9.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--sn-ink-faint); text-align: left; padding: 4px 8px; background: none; border: 0; }
+.snare-table td { padding: 6px 8px; border: 0; }
+.snare-table tr:hover td { background: var(--sn-fill); }
+.snare-table td:first-child { border-radius: 12px 0 0 12px; }
+.snare-table td:last-child { border-radius: 0 12px 12px 0; }
+.snare-table td.num { font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
+
+/* Activity picker */
+.snare-picker-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+.snare-picker-who { margin: 0; font-family: var(--sn-display); font-size: 14px; font-weight: 600; letter-spacing: 0.06em; }
+.snare-picker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.snare-app .snare-act {
+  justify-content: flex-start; gap: 10px; height: 40px; padding: 0 12px; border-radius: 12px;
+  background: var(--sn-fill); box-shadow: inset 0 0 0 1px var(--sn-hair); font-size: 13.5px; transition: background-color 0.15s ease, box-shadow 0.2s ease;
+}
+.snare-app .snare-act i { width: 16px; text-align: center; color: var(--sn-gold); }
+.snare-app .snare-act:hover { background: var(--sn-fill-3); }
+.snare-app .snare-act.is-on { background: var(--sn-gold-soft); box-shadow: inset 0 0 0 1px var(--sn-gold-line), 0 0 14px rgba(212, 178, 90, 0.18); color: var(--sn-gold-light); }
+
+/* Chat cards */
+.snare-card { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; font-family: "Spectral", Georgia, serif; font-size: 13.5px; line-height: 1.4; }
+.snare-card > i { color: #b8913a; padding-top: 2px; }
+.snare-card.public > i { color: #c8553d; }
+
+.snare-hud i { pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .snare-app * { transition: none !important; }
+}
