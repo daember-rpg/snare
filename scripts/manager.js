@@ -48,7 +48,7 @@ export class SnareManager extends ApplicationV2 {
     classes: ["snare-app"],
     tag: "div",
     window: { title: "Snare", icon: "fa-solid fa-diamond", resizable: true },
-    position: { width: 820, height: 800 }
+    position: { width: 860, height: 800 }
   };
 
   tab = "traps";
@@ -155,7 +155,7 @@ export class SnareManager extends ApplicationV2 {
       <aside class="snare-side">
         <nav class="snare-tabs" aria-label="Snare sections">
           <button type="button" class="snare-tab${this.tab === "traps" ? " is-on" : ""}" data-action="tab" data-tab="traps"><i class="fa-solid fa-diamond"></i> Traps</button>
-          <button type="button" class="snare-tab${this.tab === "exploration" ? " is-on" : ""}" data-action="tab" data-tab="exploration"><i class="fa-solid fa-person-hiking"></i> Exploration</button>
+          <button type="button" class="snare-tab${this.tab === "exploration" ? " is-on" : ""}" data-action="tab" data-tab="exploration"><i class="fa-solid fa-person-hiking"></i> Explore</button>
         </nav>
         <div class="snare-scene-name">${esc(scene.name)}</div>
         <div class="snare-list-items">${this.#listItems()}</div>
