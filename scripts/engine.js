@@ -263,7 +263,7 @@ async function doCondition(trap, e, targets, previous, scene) {
   if (list.length) await announce(`${list.map((t) => esc(t.name)).join(", ")}: ${label}${VALUED.includes(e.condition) ? ` ${e.value}` : ""}.`, "fa-person-falling", trap.name);
 }
 
-async function doTerrain(scene, trap, e) {
+async function buildTerrain(scene, trap, e) {
   const cells = terrainCellsOf(trap, e).map((c) => [...c]);
   const entry = {
     id: foundry.utils.randomID(), effectId: e.id, terrain: e.terrain, cells,
@@ -271,7 +271,12 @@ async function doTerrain(scene, trap, e) {
     affects: e.affects, exemptTokens: [...(e.exemptTokens ?? [])], exemptTraits: [...(e.exemptTraits ?? [])],
     roundsLeft: e.duration === "rounds" ? Number(e.rounds) || 1 : null, regionId: null
   };
-  if (e.terrain === "difficult" || e.terrain === "greater") entry.regionId = await createCostRegion(scene, trap, entry);
+  if (e.terrain !== "hazardous") entry.regionId = await createCostRegion(scene, trap, entry);
+  return entry;
+}
+
+async function doTerrain(scene, trap, e) {
+  const entry = await buildTerrain(scene, trap, e);
   const words = { slippery: "The floor turns slick", difficult: "Rubble covers the floor", greater: "Heavy rubble blocks the way", hazardous: "The floor turns dangerous" };
   await announce(`${words[e.terrain] ?? TERRAIN[e.terrain]}${entry.roundsLeft ? ` for ${entry.roundsLeft} rounds` : ""}.`, e.terrain === "slippery" ? "fa-snowflake" : "fa-mountain", trap.name);
   const exempt = scene.tokens.filter((t) => t.actor).map((t) => [t, exemptReason(entry, t)]).filter(([, r]) => r);
@@ -349,6 +354,23 @@ export async function tickRound(scene) {
   }
 }
 
+/** A scene feature is always active: its terrain exists from the moment it is set up, with nothing to find or disable. */
+export async function syncFeature(scene, trap) {
+  if (!scene || !trap) return;
+  for (const t of trap.state.terrain) if (t.regionId) await scene.regions?.get(t.regionId)?.delete().catch(() => {});
+  if (!trap.feature) {
+    if (trap.state.status === "active") await updateState(scene, trap.id, { status: "armed", terrain: [] });
+    return;
+  }
+  const terrain = [];
+  for (const e of trap.effects.filter((x) => x.type === "terrain")) {
+    const entry = await buildTerrain(scene, trap, { ...e, duration: "permanent" });
+    if (entry.cells.length) terrain.push(entry);
+  }
+  await updateState(scene, trap.id, { status: "active", terrain, detectedBy: [], rolledBy: [], progress: 0, rearmIn: 0 });
+  requestDraw();
+}
+
 export async function clearTerrain(scene, trap) {
   for (const t of trap.state.terrain) if (t.regionId) await scene.regions?.get(t.regionId)?.delete().catch(() => {});
   await updateState(scene, trap.id, { terrain: [] });
@@ -363,6 +385,7 @@ export async function attemptDisable(scene, trapId, actorId, rowIndex) {
   const row = trap?.disable[rowIndex];
   const actor = game.actors.get(actorId);
   if (!trap || !row || !actor || trap.state.status !== "armed") return;
+  if (trap.noDisable || trap.feature) return ui.notifications.info(`Snare: ${trap.name} can't be disabled.`);
   const stat = actor.skills?.[row.skill];
   const rank = stat?.rank ?? 0;
   const skillLabel = row.skill[0].toUpperCase() + row.skill.slice(1);

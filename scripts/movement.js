@@ -179,8 +179,11 @@ async function balanceCheck(doc, dc) {
     deg = degreeOf(r.total, Number(dc), r.dice[0]?.total);
     await r.toMessage({ speaker: ChatMessage.getSpeaker({ token: doc }), flavor: `Balance (Acrobatics) DC ${dc}` });
   }
-  const text = deg >= 2 ? "keeps their footing" : deg === 1 ? "loses their footing and stops" : "slips and falls prone";
-  await announce(`${esc(doc.name)} ${text} (${DEGREES[deg]}).`, "fa-snowflake");
+  const text = deg === 3 ? "crosses at full speed"
+    : deg === 2 ? "keeps their footing; the ground counts as difficult terrain"
+    : deg === 1 ? "stops to keep their balance"
+    : "falls prone, and their turn ends";
+  await announce(`Balance (Acrobatics ${total} vs DC ${dc}): ${esc(doc.name)} ${text}. They are off-guard while on this ground.`, "fa-snowflake");
   return deg;
 }
 

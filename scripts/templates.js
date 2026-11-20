@@ -77,6 +77,8 @@ export const TEMPLATES = [
   }
 ];
 
+export const FEATURE_CARD = { id: 3, label: "Part of the scene", icon: "fa-mountain-sun", blurb: "Always there and always active. Nobody rolls to find it, and it can't be disabled." };
+
 export const HIDDENNESS = [
   { id: 0, label: "In plain sight", icon: "fa-eye", blurb: "Anyone can notice it. Every PC gets a secret check, Searching or not.", minProf: 0, adj: 0 },
   { id: 1, label: "Hidden", icon: "fa-eye-low-vision", blurb: "Only characters who are Searching with Trained Perception get a check.", minProf: 1, adj: 2 },

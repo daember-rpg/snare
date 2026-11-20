@@ -16,6 +16,12 @@ Hooks.once("init", () => {
     scope: "client", config: true, type: Boolean, default: true,
     onChange: () => requestDraw()
   });
+  game.settings.register(MODULE_ID, "overlayOpacity", {
+    name: "Trap markings opacity (GM)",
+    hint: "How strongly trap markings show on the map for you.",
+    scope: "client", config: true, type: Number, range: { min: 10, max: 100, step: 5 }, default: 100,
+    onChange: () => requestDraw()
+  });
   game.keybindings.register(MODULE_ID, "open", {
     name: "Open Snare",
     editable: [{ key: "KeyT", modifiers: ["Shift"] }],

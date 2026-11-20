@@ -3,7 +3,7 @@ import { MODULE_ID, LEVEL_DC, XP_SIMPLE } from "./constants.js";
 /** Keys the builder edits. Everything else lives under `state` and is written only by the GM's engine. */
 export const CONFIG_KEYS = ["name", "level", "kind", "magical", "partyLevel", "stealthDC", "minProf", "detectRadius",
   "trigger", "origin", "triggeredBy", "triggerIgnore", "targets", "confirm", "after", "rearmRounds",
-  "effects", "disable", "successes", "critFailTriggers", "notes"];
+  "effects", "disable", "successes", "critFailTriggers", "notes", "feature", "noDisable", "playersSee"];
 
 export const clone = (o) => foundry.utils.deepClone(o);
 export const key = (c) => `${c[0]},${c[1]}`;
@@ -29,6 +29,7 @@ export function blankTrap(level = 1) {
     trigger: [], origin: null, triggeredBy: "any", triggerIgnore: [], targets: "triggering", confirm: true,
     after: "oneshot", rearmRounds: 3,
     effects: [], disable: [{ skill: "thievery", dc, minProf: 1 }], successes: 1, critFailTriggers: true, notes: "",
+    feature: false, noDisable: false, playersSee: true,
     state: freshState()
   };
 }

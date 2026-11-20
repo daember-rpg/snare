@@ -7,6 +7,11 @@ export const drafts = new Map();
 let queued = false;
 let hover = null;
 
+/** Live opacity while the GM drags the slider. */
+export function setOpacity(pct) {
+  if (layer && !layer.destroyed && game.user.isGM) layer.alpha = Math.max(0.1, Math.min(1, pct / 100));
+}
+
 /** The square under the cursor while painting. */
 export function setHover(cell) {
   const k = cell ? key(cell) : null;
@@ -49,6 +54,7 @@ export function draw() {
   const root = ensureLayer();
   if (!root) return;
   for (const child of root.removeChildren()) child.destroy({ children: true });
+  root.alpha = game.user.isGM ? (Number(game.settings.get(MODULE_ID, "overlayOpacity")) || 100) / 100 : 1;
   const gs = canvas.grid.size;
   const gm = game.user.isGM;
   const showGM = gm && game.settings.get(MODULE_ID, "showOverlay");
@@ -59,15 +65,15 @@ export function draw() {
     const trap = drafts.get(saved.id) ? { ...drafts.get(saved.id), state: saved.state } : saved;
     const st = trap.state;
 
-    // Active terrain: everyone sees it.
-    for (const t of st.terrain) {
+    // Active terrain: the GM always; players only when the trap allows it.
+    for (const t of (gm || trap.playersSee !== false) ? st.terrain : []) {
       const [color, alpha] = TERRAIN_FILL[t.terrain] ?? [C.ink, 0.2];
       g.lineStyle(0); g.beginFill(color, alpha);
       for (const c of t.cells) rect(g, c, 1, gs);
       g.endFill();
     }
 
-    const visibleTrigger = showGM || st.revealed || st.status !== "armed" || ownsDetector(trap);
+    const visibleTrigger = !trap.feature && (showGM || st.revealed || st.status !== "armed" || ownsDetector(trap));
     if (showGM && st.status === "armed") {
       // Detection zone
       const trig = triggerKeys(trap);
@@ -101,7 +107,7 @@ export function draw() {
       g.endFill();
     }
 
-    if (showGM && trap.origin) {
+    if (showGM && trap.origin && !trap.feature) {
       const o = cellCenter(trap.origin);
       const mid = triggerCentroid(trap);
       if (mid) {
@@ -117,7 +123,7 @@ export function draw() {
 
     if (showGM && trap.trigger.length) {
       const mid = triggerCentroid(trap);
-      const label = new PIXI.Text(`${trap.name}${st.status !== "armed" ? ` · ${st.status}` : ""}`, {
+      const label = new PIXI.Text(`${trap.name}${trap.feature ? " · scene" : st.status !== "armed" ? ` · ${st.status}` : ""}`, {
         fontFamily: "Cinzel, serif", fontSize: Math.max(12, gs * 0.26), fontWeight: "600",
         fill: C.ink, stroke: 0x0f0d0c, strokeThickness: 4, letterSpacing: 1
       });
