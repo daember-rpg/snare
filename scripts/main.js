@@ -3,7 +3,7 @@ import { initSocket, onMessage } from "./socket.js";
 import { playFx } from "./pyre.js";
 import { draw, requestDraw } from "./overlay.js";
 import { registerMovement } from "./movement.js";
-import { registerEngine, patchMovementCost, tickRound, fireTrap } from "./engine.js";
+import { registerEngine, patchMovementCost, tickRound, fireTrap, refreshUneven } from "./engine.js";
 import { SnareManager } from "./manager.js";
 import { ActivityPicker, registerActivityEntryPoints } from "./activity.js";
 import { isActiveGM } from "./store.js";
@@ -57,6 +57,12 @@ Hooks.on("updateScene", (scene, changes) => {
 
 Hooks.on("updateActor", (actor, changes) => {
   if (foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`)) SnareManager.instance?.refreshState();
+});
+
+// Off-guard on uneven ground follows the token.
+Hooks.on("updateToken", (doc, changes) => {
+  if (!isActiveGM() || !("x" in changes || "y" in changes)) return;
+  refreshUneven(doc.parent, doc);
 });
 
 // Terrain and self-rearming traps count down each combat round.

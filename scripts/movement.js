@@ -117,9 +117,14 @@ async function handleMove(scene, doc, movement, plan) {
     const t = activeTerrainAt(traps, k);
     if (t && !exemptReason(t, doc)) {
       if (t.terrain === "slippery" && !balanced) {
-        const deg = await balanceCheck(doc, t.balanceDC);
+        const deg = await balanceCheck(doc, t);
         if (deg >= 2) balanced = true;
-        else { stop = n; fallProne = deg === 0; break outer; }
+        else {
+          stop = n;
+          fallProne = deg === 0 || t.failResult === "prone";
+          if (deg === 0 && t.fallDamage) await fallDamage(doc, t.fallDamage);
+          break outer;
+        }
       } else if (t.terrain === "hazardous") {
         await hazardDamage(doc, t);
       }
@@ -165,7 +170,16 @@ async function moveTo(doc, movement, plan, stop) {
   }
 }
 
-async function balanceCheck(doc, dc) {
+async function fallDamage(doc, formula) {
+  const DR = CONFIG.Dice.rolls.find((r) => r.name === "DamageRoll");
+  let roll = null;
+  if (DR) { try { roll = await new DR(`(${formula})[bludgeoning]`).evaluate(); } catch (err) { roll = null; } }
+  if (!roll) roll = await new Roll(formula || "0").evaluate();
+  await roll.toMessage({ speaker: { alias: "Snare" }, flavor: `${esc(doc.name)} falls hard` });
+}
+
+async function balanceCheck(doc, t) {
+  const dc = t.balanceDC;
   const actor = doc.actor;
   const stat = actor.skills?.acrobatics;
   let deg = null, total = "?";
@@ -181,9 +195,9 @@ async function balanceCheck(doc, dc) {
   }
   const text = deg === 3 ? "crosses at full speed"
     : deg === 2 ? "keeps their footing; the ground counts as difficult terrain"
-    : deg === 1 ? "stops to keep their balance"
+    : deg === 1 ? (t.failResult === "prone" ? "falls prone, and their turn ends" : "stops to keep their balance")
     : "falls prone, and their turn ends";
-  await announce(`Balance (Acrobatics ${total} vs DC ${dc}): ${esc(doc.name)} ${text}. They are off-guard while on this ground.`, "fa-snowflake");
+  await announce(`Balance (Acrobatics ${total} vs DC ${dc}): ${esc(doc.name)} ${text}.${t.offGuard !== false ? " They are off-guard while on this ground." : ""}`, "fa-snowflake");
   return deg;
 }
 

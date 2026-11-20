@@ -40,7 +40,7 @@ export function newEffect(type, level = 1) {
   if (type === "strike") return { id, type, attack: dc - 8, damage: "2d6+3", dtype: "piercing", pyre: "std-force-bolt" };
   if (type === "burst") return { id, type, center: "origin", cell: null, radius: 2, save: "reflex", dc, basic: true, damage: "3d6", dtype: "fire", pyre: "std-fireball" };
   if (type === "condition") return { id, type, condition: "prone", value: 1, appliesTo: "failed" };
-  return { id, type: "terrain", terrain: "difficult", balanceDC: dc, hazDamage: "1d6", area: "trigger", cells: [], duration: "permanent", rounds: 3, affects: "all", exemptTokens: [], exemptTraits: [] };
+  return { id, type: "terrain", terrain: "difficult", balanceDC: dc, hazDamage: "1d6", offGuard: true, failResult: "stop", fallDamage: "", area: "trigger", cells: [], duration: "permanent", rounds: 3, affects: "all", exemptTokens: [], exemptTraits: [] };
 }
 
 /** Fill gaps so older or hand-edited data never breaks the UI. */

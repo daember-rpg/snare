@@ -194,6 +194,7 @@ export async function fireTrap(scene, trapId, tokenId, { skipConfirm = false } =
       terrain
     });
     requestDraw();
+    await refreshUnevenAll(scene);
   } finally {
     fireLock.delete(trapId);
   }
@@ -269,6 +270,7 @@ async function buildTerrain(scene, trap, e) {
     id: foundry.utils.randomID(), effectId: e.id, terrain: e.terrain, cells,
     balanceDC: Number(e.balanceDC) || 15, hazDamage: e.hazDamage, hazType: e.hazType ?? "fire",
     affects: e.affects, exemptTokens: [...(e.exemptTokens ?? [])], exemptTraits: [...(e.exemptTraits ?? [])],
+    offGuard: e.offGuard !== false, failResult: e.failResult ?? "stop", fallDamage: e.fallDamage ?? "",
     roundsLeft: e.duration === "rounds" ? Number(e.rounds) || 1 : null, regionId: null
   };
   if (e.terrain !== "hazardous") entry.regionId = await createCostRegion(scene, trap, entry);
@@ -352,6 +354,7 @@ export async function tickRound(scene) {
     }
     if (Object.keys(patch).length) await updateState(scene, trap.id, patch);
   }
+  await refreshUnevenAll(scene);
 }
 
 /** A scene feature is always active: its terrain exists from the moment it is set up, with nothing to find or disable. */
@@ -360,6 +363,7 @@ export async function syncFeature(scene, trap) {
   for (const t of trap.state.terrain) if (t.regionId) await scene.regions?.get(t.regionId)?.delete().catch(() => {});
   if (!trap.feature) {
     if (trap.state.status === "active") await updateState(scene, trap.id, { status: "armed", terrain: [] });
+    await refreshUnevenAll(scene);
     return;
   }
   const terrain = [];
@@ -369,11 +373,13 @@ export async function syncFeature(scene, trap) {
   }
   await updateState(scene, trap.id, { status: "active", terrain, detectedBy: [], rolledBy: [], progress: 0, rearmIn: 0 });
   requestDraw();
+  await refreshUnevenAll(scene);
 }
 
 export async function clearTerrain(scene, trap) {
   for (const t of trap.state.terrain) if (t.regionId) await scene.regions?.get(t.regionId)?.delete().catch(() => {});
   await updateState(scene, trap.id, { terrain: [] });
+  await refreshUnevenAll(scene);
 }
 
 /* =========================================================================
@@ -421,3 +427,66 @@ export async function attemptDisable(scene, trapId, actorId, rowIndex) {
 }
 
 export { isPC, isPartyToken, triggerCentroid };
+
+/* =========================================================================
+   Off-guard while standing on uneven ground (GM)
+   ========================================================================= */
+
+const UNEVEN_SLUG = "snare-uneven-ground";
+
+function unevenAt(scene, doc) {
+  const k = tokenCell(doc).join(",");
+  for (const trap of getTraps(scene)) {
+    for (const t of trap.state.terrain) {
+      if (t.terrain !== "slippery" || t.offGuard === false) continue;
+      if (!t.cells.some((c) => c.join(",") === k)) continue;
+      if (exemptReason(t, doc)) continue;
+      return t;
+    }
+  }
+  return null;
+}
+
+async function offGuardSource() {
+  try {
+    const c = game.pf2e?.ConditionManager?.getCondition?.("off-guard");
+    if (c?.uuid) return c.uuid;
+    if (c?.sourceId) return c.sourceId;
+  } catch (err) { /* fall back below */ }
+  try {
+    const pack = game.packs.get("pf2e.conditionitems");
+    const index = await pack?.getIndex({ fields: ["system.slug"] });
+    const hit = index?.find((e) => e.system?.slug === "off-guard" || e.name === "Off-Guard");
+    if (hit) return hit.uuid ?? `Compendium.pf2e.conditionitems.Item.${hit._id}`;
+  } catch (err) { /* nothing */ }
+  return null;
+}
+
+/** Adds or removes Snare's "uneven ground" effect on one token. */
+export async function refreshUneven(scene, doc) {
+  const actor = doc?.actor;
+  if (!actor || !scene) return;
+  const has = actor.items.filter((i) => i.getFlag?.(MODULE_ID, "uneven"));
+  const on = unevenAt(scene, doc);
+  if (!on) {
+    if (has.length) await actor.deleteEmbeddedDocuments("Item", has.map((i) => i.id)).catch(() => {});
+    return;
+  }
+  if (has.length) return;
+  const uuid = await offGuardSource();
+  const rules = uuid ? [{ key: "GrantItem", uuid }] : [{ key: "FlatModifier", selector: "ac", type: "circumstance", value: -2, label: "Off-guard (uneven ground)" }];
+  await actor.createEmbeddedDocuments("Item", [{
+    type: "effect", name: "Uneven ground", img: "icons/svg/falling.svg",
+    system: {
+      slug: UNEVEN_SLUG, rules, tokenIcon: { show: true },
+      duration: { value: -1, unit: "unlimited", expiry: null, sustained: false },
+      description: { value: "<p>Off-guard while on uneven ground (Snare). Removed when the creature leaves it.</p>" }
+    },
+    flags: { [MODULE_ID]: { uneven: true } }
+  }]).catch((err) => console.warn(`${MODULE_ID} | could not add the uneven ground effect`, err));
+}
+
+export async function refreshUnevenAll(scene) {
+  if (!scene) return;
+  for (const doc of scene.tokens) await refreshUneven(scene, doc);
+}

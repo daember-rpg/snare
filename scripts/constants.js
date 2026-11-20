@@ -36,7 +36,11 @@ export const DTYPES = ["piercing", "slashing", "bludgeoning", "fire", "cold", "e
 
 /** What each terrain does, in Player Core terms. */
 export function terrainRules(e) {
-  if (e.terrain === "slippery") return `Uneven ground, Balance DC ${e.balanceDC}. Creatures on it are off-guard. Crossing it takes an Acrobatics check: on a critical success they move normally; on a success it counts as difficult terrain; on a failure they stop to keep their balance; on a critical failure they fall prone and their turn ends.`;
+  if (e.terrain === "slippery") {
+    const fail = e.failResult === "prone" ? "they fall prone and their turn ends" : "they stop to keep their balance";
+    const fall = e.fallDamage ? `, taking ${e.fallDamage} bludgeoning damage` : "";
+    return `Uneven ground, Balance DC ${e.balanceDC}.${e.offGuard !== false ? " Creatures on it are off-guard (applied and removed automatically)." : ""} Crossing it takes an Acrobatics check: on a critical success they move normally; on a success it counts as difficult terrain; on a failure ${fail}; on a critical failure they fall prone${fall} and their turn ends.`;
+  }
   if (e.terrain === "difficult") return "Each square costs 5 extra feet of movement, and creatures can't Step into it.";
   if (e.terrain === "greater") return "Each square costs 10 extra feet of movement.";
   if (e.terrain === "hazardous") return `Each square entered deals ${e.hazDamage} ${e.hazType ?? "fire"} damage.`;

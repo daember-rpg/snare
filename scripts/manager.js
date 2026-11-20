@@ -406,7 +406,9 @@ export class SnareManager extends ApplicationV2 {
       const cells = terrainCellsOf(t, e).length;
       body = `${field("Type", p + "terrain", sel(p + "terrain", e.terrain, Object.entries(TERRAIN)))}
         <p class="snare-rules">${esc(terrainRules(e))}</p>
-        ${e.terrain === "slippery" ? field("Balance DC (Acrobatics)", p + "balanceDC", num(p + "balanceDC", e.balanceDC), "Player Core samples: untrained 15ish for uneven cobblestones, master for a smooth sheet of ice.") : ""}
+        ${e.terrain === "slippery" ? `${field("Balance DC (Acrobatics)", p + "balanceDC", num(p + "balanceDC", e.balanceDC), "Player Core samples: untrained for uneven cobblestones, master for a smooth sheet of ice.")}
+          ${chk(p + "offGuard", e.offGuard !== false, "Off-guard while standing on it (added and removed automatically)")}
+          <div class="snare-row">${field("On a failed Balance", p + "failResult", sel(p + "failResult", e.failResult ?? "stop", [["stop", "Stops in place (rules)"], ["prone", "Falls prone"]]))}${field("Damage from a fall (optional)", p + "fallDamage", txt(p + "fallDamage", e.fallDamage ?? "", "e.g. 1d6"), "On a critical failure they always fall prone.")}</div>` : ""}
         ${e.terrain === "hazardous" ? `<div class="snare-row">${field("Damage per square", p + "hazDamage", txt(p + "hazDamage", e.hazDamage))}${field("Damage type", p + "hazType", sel(p + "hazType", e.hazType ?? "fire", DTYPES))}</div>` : ""}
         ${e.terrain !== "hazardous" ? `<p class="snare-muted small">Snare adds the extra cost to Foundry's ruler. Exempt creatures move at normal cost.</p>` : ""}
         <div class="snare-row">${field("Area", p + "area", sel(p + "area", e.area, [["trigger", "Trigger squares"], ["painted", "Painted area"]]), `${cells} square${cells === 1 ? "" : "s"}`)}
