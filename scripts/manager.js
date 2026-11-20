@@ -96,6 +96,7 @@ export class SnareManager extends ApplicationV2 {
     await saveConfig(scene, t);
     // Scene features keep their terrain in step with the painted area and the terrain effects.
     const saved = getTrap(scene, t.id);
+    if (this.paint) return;   // terrain catches up when painting stops
     if (!saved || (!saved.feature && saved.state.status !== "active")) return;
     const sig = JSON.stringify([saved.feature, saved.sceneLevel, saved.trigger, saved.effects.filter((e) => e.type === "terrain")]);
     if (this.#featureSig[t.id] === sig && saved.state.status === (saved.feature ? "active" : "armed")) return;
@@ -218,9 +219,11 @@ export class SnareManager extends ApplicationV2 {
       ? [["fa-arrow-pointer", "<b>Click</b> a square on the map to add it."],
          ["fa-hand-pointer", "<b>Hold and drag</b> to paint several in a row."],
          ["fa-eraser", "<b>Click a painted square</b> to remove it."],
-         ["fa-computer-mouse", "<b>Right-click</b> anywhere on the map when you're done."]]
+         ["fa-up-down-left-right", "<b>Right-drag</b> moves the map as usual."],
+         ["fa-check", `Press <b>${this.wizard ? "Next" : "Done"}</b> or <b>Esc</b> when you're finished.`]]
       : [["fa-arrow-pointer", `<b>Click one square</b> on the map${pm.mode === "origin" ? ": a slot in the wall, the ceiling, a statue's mouth" : ""}.`],
-         ["fa-computer-mouse", "<b>Right-click</b> to cancel."]];
+         ["fa-up-down-left-right", "<b>Right-drag</b> moves the map as usual."],
+         ["fa-xmark", "<b>Esc</b> cancels."]];
     let foot;
     if (w) {
       foot = `<button type="button" class="snare-btn ghost" data-action="wizBack"><i class="fa-solid fa-arrow-left"></i> Back</button>
@@ -820,7 +823,8 @@ export class SnareManager extends ApplicationV2 {
     } else if (w.step === "where") {
       body = `<h2 class="snare-wiz-q">Where is the trigger?</h2>
         <p class="snare-wiz-help">Click or drag on the map to paint the squares that set it off: a pressure plate, a tripwire, a chest. Click a painted square again to remove it.</p>
-        <div class="snare-wiz-live"><i class="fa-solid fa-paintbrush"></i><span class="snare-wiz-count">${t.trigger.length} square${t.trigger.length === 1 ? "" : "s"} painted</span>${t.trigger.length ? `<button type="button" class="snare-btn sm ghost" data-action="clearTrigger">Clear</button>` : ""}</div>`;
+        <div class="snare-wiz-live"><i class="fa-solid fa-paintbrush"></i><span class="snare-wiz-count">${t.trigger.length} square${t.trigger.length === 1 ? "" : "s"} painted</span>${t.trigger.length ? `<button type="button" class="snare-btn sm ghost" data-action="clearTrigger">Clear</button>` : ""}</div>
+        <button type="button" class="snare-btn primary" data-action="paint" data-mode="trigger" data-effect=""><i class="fa-solid fa-paintbrush"></i> Paint on the map</button>`;
       nextDisabled = !t.trigger.length;
     } else if (w.step === "origin") {
       body = `<h2 class="snare-wiz-q">Where does the attack come from?</h2>
@@ -894,9 +898,7 @@ export class SnareManager extends ApplicationV2 {
     const onBoard = (ev) => ev.target === view;
     const swallow = (ev) => { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); };
     const down = (ev) => {
-      if (!onBoard(ev)) return;
-      if (ev.button === 2) { swallow(ev); this.stopPaint(); return; }
-      if (ev.button !== 0) return;
+      if (!onBoard(ev) || ev.button !== 0) return;   // right and middle buttons stay Foundry's: drag the map freely
       swallow(ev);
       this.#paintAt(toCell(ev), true);
     };
@@ -909,17 +911,21 @@ export class SnareManager extends ApplicationV2 {
       this.#paintAt(cell, false);
     };
     const up = (ev) => {
-      if (this.paint?.op && onBoard(ev)) swallow(ev);
-      if (this.paint) this.paint.op = null;
+      if (this.paint?.op) {
+        if (onBoard(ev)) swallow(ev);
+        this.paint.op = null;
+        this.#queueSave();
+      }
     };
-    const ctx = (ev) => { if (onBoard(ev)) swallow(ev); };
+    const ctx = () => {};
+    const key = (ev) => { if (ev.key === "Escape" && this.paint) { swallow(ev); this.stopPaint(); } };
     const block = (ev) => { if (onBoard(ev) && ev.button === 0) swallow(ev); };
     for (const type of ["mousedown", "click", "dblclick"]) window.addEventListener(type, block, true);
     window.addEventListener("pointerdown", down, true);
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
-    window.addEventListener("contextmenu", ctx, true);
-    this.#canvasHandlers = { view, down, move, up, ctx, block };
+    window.addEventListener("keydown", key, true);
+    this.#canvasHandlers = { view, down, move, up, ctx, block, key };
     this.render();
     canvas.app.view.focus?.();
   }
@@ -930,7 +936,7 @@ export class SnareManager extends ApplicationV2 {
       window.removeEventListener("pointerdown", h.down, true);
       window.removeEventListener("pointermove", h.move, true);
       window.removeEventListener("pointerup", h.up, true);
-      window.removeEventListener("contextmenu", h.ctx, true);
+      window.removeEventListener("keydown", h.key, true);
       for (const type of ["mousedown", "click", "dblclick"]) window.removeEventListener(type, h.block, true);
       h.view.style.cursor = "";
     }
@@ -967,7 +973,8 @@ export class SnareManager extends ApplicationV2 {
       if (e.area !== "painted") { e.area = "painted"; e.cells = t.trigger.map((c) => [...c]); }
       toggle(e.cells);
     }
-    this.#queueSave();
+    drafts.set(t.id, t);
+    requestDraw();
     const wc = this.element?.querySelector(".snare-wiz-count");
     if (wc && pm.mode === "trigger") wc.textContent = `${t.trigger.length} square${t.trigger.length === 1 ? "" : "s"} painted`;
     if (wc && pm.mode === "area") { const e = t.effects.find((x) => x.id === pm.effectId); if (e) wc.textContent = `${terrainCellsOf(t, e).length} squares`; }

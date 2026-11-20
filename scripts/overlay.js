@@ -26,7 +26,18 @@ export function setHover(cell) {
   const k = cell ? key(cell) : null;
   if ((hover ? key(hover) : null) === k) return;
   hover = cell;
-  requestDraw();
+  paintHover();
+}
+
+let hoverG = null;
+function paintHover() {
+  if (!hoverG || hoverG.destroyed) return;
+  hoverG.clear();
+  if (!hover || !game.user.isGM || !canvas?.ready) return;
+  const gs = canvas.grid.size;
+  const tl = cellTopLeft(hover);
+  hoverG.lineStyle(3, C.gold, 1); hoverG.beginFill(C.gold, 0.22);
+  hoverG.drawRoundedRect(tl.x + 2, tl.y + 2, gs - 4, gs - 4, Math.max(3, gs * 0.1)); hoverG.endFill();
 }
 
 const C = { gold: 0xd4b25a, ember: 0xc8553d, emberLight: 0xe8876d, ink: 0xefe3c8, ice: 0x8fb0c9, mud: 0x8a6a48, orange: 0xff8a4c };
@@ -62,7 +73,7 @@ function rect(g, c, inset, gs) {
 export function draw() {
   const root = ensureLayer();
   if (!root) return;
-  for (const child of root.removeChildren()) child.destroy({ children: true });
+  for (const child of root.removeChildren()) if (child !== hoverG) child.destroy({ children: true });
   root.alpha = game.user.isGM ? (Number(game.settings.get(MODULE_ID, "overlayOpacity")) || 100) / 100 : 1;
   const gs = canvas.grid.size;
   const gm = game.user.isGM;
@@ -144,18 +155,11 @@ export function draw() {
       root.addChild(label);
     }
   }
-  drawHover(root);
+  if (!hoverG || hoverG.destroyed) hoverG = new PIXI.Graphics();
+  root.addChild(hoverG);
+  paintHover();
 }
 
-function drawHover(root) {
-  if (!hover || !game.user.isGM) return;
-  const gs = canvas.grid.size;
-  const g = new PIXI.Graphics();
-  const tl = cellTopLeft(hover);
-  g.lineStyle(3, C.gold, 1); g.beginFill(C.gold, 0.22);
-  g.drawRoundedRect(tl.x + 2, tl.y + 2, gs - 4, gs - 4, Math.max(3, gs * 0.1)); g.endFill();
-  root.addChild(g);
-}
 
 function dashed(g, a, b, dash) {
   const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);

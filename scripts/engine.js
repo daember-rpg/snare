@@ -449,43 +449,33 @@ function unevenAt(scene, doc) {
   return null;
 }
 
-async function offGuardSource() {
-  try {
-    const c = game.pf2e?.ConditionManager?.getCondition?.("off-guard");
-    if (c?.uuid) return c.uuid;
-    if (c?.sourceId) return c.sourceId;
-  } catch (err) { /* fall back below */ }
-  try {
-    const pack = game.packs.get("pf2e.conditionitems");
-    const index = await pack?.getIndex({ fields: ["system.slug"] });
-    const hit = index?.find((e) => e.system?.slug === "off-guard" || e.name === "Off-Guard");
-    if (hit) return hit.uuid ?? `Compendium.pf2e.conditionitems.Item.${hit._id}`;
-  } catch (err) { /* nothing */ }
-  return null;
-}
-
-/** Adds or removes Snare's "uneven ground" effect on one token. */
+/**
+ * Off-guard while on uneven ground, as the real condition so it shows on the token.
+ * The token remembers whether Snare added it, so an Off-Guard from something else is never removed.
+ */
 export async function refreshUneven(scene, doc) {
   const actor = doc?.actor;
   if (!actor || !scene) return;
-  const has = actor.items.filter((i) => i.getFlag?.(MODULE_ID, "uneven"));
-  const on = unevenAt(scene, doc);
-  if (!on) {
-    if (has.length) await actor.deleteEmbeddedDocuments("Item", has.map((i) => i.id)).catch(() => {});
-    return;
+  // Clean up the effect item older versions used.
+  const legacy = actor.items.filter((i) => i.getFlag?.(MODULE_ID, "uneven"));
+  if (legacy.length) await actor.deleteEmbeddedDocuments("Item", legacy.map((i) => i.id)).catch(() => {});
+  const mark = doc.getFlag(MODULE_ID, "offGuard");
+  const on = !!unevenAt(scene, doc);
+  try {
+    if (on && !mark) {
+      if (actor.hasCondition?.("off-guard")) await doc.setFlag(MODULE_ID, "offGuard", "existing");
+      else { await actor.increaseCondition("off-guard"); await doc.setFlag(MODULE_ID, "offGuard", "added"); }
+    } else if (!on && mark) {
+      if (mark === "added") {
+        const c = actor.getCondition?.("off-guard");
+        if (c && typeof actor.decreaseCondition === "function") await actor.decreaseCondition("off-guard", { forceRemove: true });
+        else if (c) await c.delete();
+      }
+      await doc.unsetFlag(MODULE_ID, "offGuard");
+    }
+  } catch (err) {
+    console.warn(`${MODULE_ID} | could not update Off-Guard on ${doc.name}`, err);
   }
-  if (has.length) return;
-  const uuid = await offGuardSource();
-  const rules = uuid ? [{ key: "GrantItem", uuid }] : [{ key: "FlatModifier", selector: "ac", type: "circumstance", value: -2, label: "Off-guard (uneven ground)" }];
-  await actor.createEmbeddedDocuments("Item", [{
-    type: "effect", name: "Uneven ground", img: "icons/svg/falling.svg",
-    system: {
-      slug: UNEVEN_SLUG, rules, tokenIcon: { show: true },
-      duration: { value: -1, unit: "unlimited", expiry: null, sustained: false },
-      description: { value: "<p>Off-guard while on uneven ground (Snare). Removed when the creature leaves it.</p>" }
-    },
-    flags: { [MODULE_ID]: { uneven: true } }
-  }]).catch((err) => console.warn(`${MODULE_ID} | could not add the uneven ground effect`, err));
 }
 
 export async function refreshUnevenAll(scene) {
