@@ -6,7 +6,7 @@ import {
   dcForLevel, xpInfo, esc, key, pointCell, alliance, freshState, terrainCellsOf, tokenCell, isActiveGM,
   sceneLevels, viewedLevel
 } from "./store.js";
-import { drafts, requestDraw, setHover, setOpacity } from "./overlay.js";
+import { drafts, requestDraw, setHover, setOpacity, beginPaintPreview, paintCells, endPaintPreview } from "./overlay.js";
 import { fireTrap, tickRound, attemptDisable, clearTerrain, activityOf, syncFeature } from "./engine.js";
 import { pyreReady } from "./pyre.js";
 import { TEMPLATES, HIDDENNESS, FEATURE_CARD } from "./templates.js";
@@ -887,6 +887,11 @@ export class SnareManager extends ApplicationV2 {
       this.setPosition({ width: 360, height: "auto", left: 110, top: 70 });
     }
     view.style.cursor = "crosshair";
+    if (mode === "trigger") beginPaintPreview(this.draft.id, mode, null, this.draft.trigger);
+    else if (mode === "area") {
+      const e = this.draft.effects.find((x) => x.id === effectId);
+      if (e?.type === "terrain") beginPaintPreview(this.draft.id, mode, effectId, terrainCellsOf(this.draft, e));
+    }
     const toCell = (ev) => {
       const p = typeof canvas.canvasCoordinatesFromClient === "function"
         ? canvas.canvasCoordinatesFromClient({ x: ev.clientX, y: ev.clientY })
@@ -941,6 +946,7 @@ export class SnareManager extends ApplicationV2 {
       h.view.style.cursor = "";
     }
     setHover(null);
+    endPaintPreview();
     if (this._fullPos) {
       const pos = this._fullPos;
       this._fullPos = null;
@@ -964,7 +970,8 @@ export class SnareManager extends ApplicationV2 {
       if (pm.op === "add" && i < 0) list.push(cell);
       if (pm.op === "remove" && i >= 0) list.splice(i, 1);
     };
-    if (pm.mode === "trigger") toggle(t.trigger);
+    let list = null;
+    if (pm.mode === "trigger") { toggle(t.trigger); list = t.trigger; }
     else if (pm.mode === "origin") { t.origin = cell; this.#queueSave(); this.stopPaint(); return; }
     else if (pm.mode === "area") {
       const e = t.effects.find((x) => x.id === pm.effectId);
@@ -972,9 +979,10 @@ export class SnareManager extends ApplicationV2 {
       if (e.type === "burst") { e.center = "custom"; e.cell = cell; this.#queueSave(); this.stopPaint(); return; }
       if (e.area !== "painted") { e.area = "painted"; e.cells = t.trigger.map((c) => [...c]); }
       toggle(e.cells);
+      list = e.cells;
     }
     drafts.set(t.id, t);
-    requestDraw();
+    if (list) paintCells(list);
     const wc = this.element?.querySelector(".snare-wiz-count");
     if (wc && pm.mode === "trigger") wc.textContent = `${t.trigger.length} square${t.trigger.length === 1 ? "" : "s"} painted`;
     if (wc && pm.mode === "area") { const e = t.effects.find((x) => x.id === pm.effectId); if (e) wc.textContent = `${terrainCellsOf(t, e).length} squares`; }

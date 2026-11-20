@@ -30,6 +30,36 @@ export function setHover(cell) {
 }
 
 let hoverG = null;
+let previewG = null;
+/** The trap being painted: its painted squares live in their own graphic so each square costs one tiny redraw. */
+let painting = null;
+const labels = new Map();
+
+export function beginPaintPreview(trapId, mode, effectId, cells) {
+  painting = { trapId, mode, effectId, cells: cells ?? [] };
+  requestDraw();
+}
+export function paintCells(cells) {
+  if (!painting) return;
+  painting.cells = cells;
+  paintPreview();
+}
+export function endPaintPreview() {
+  painting = null;
+  previewG?.clear();
+  requestDraw();
+}
+function paintPreview() {
+  if (!previewG || previewG.destroyed) return;
+  previewG.clear();
+  if (!painting || !canvas?.ready) return;
+  const gs = canvas.grid.size;
+  const [color, alpha] = painting.mode === "trigger" ? [C.ember, 0.34] : [C.ice, 0.3];
+  previewG.lineStyle(2, color, 0.9);
+  previewG.beginFill(color, alpha);
+  for (const c of painting.cells) { const tl = cellTopLeft(c); previewG.drawRect(tl.x + 3, tl.y + 3, gs - 6, gs - 6); }
+  previewG.endFill();
+}
 function paintHover() {
   if (!hoverG || hoverG.destroyed) return;
   hoverG.clear();
@@ -73,7 +103,9 @@ function rect(g, c, inset, gs) {
 export function draw() {
   const root = ensureLayer();
   if (!root) return;
-  for (const child of root.removeChildren()) if (child !== hoverG) child.destroy({ children: true });
+  const keep = new Set([hoverG, previewG, ...[...labels.values()].map((l) => l.obj)]);
+  for (const child of root.removeChildren()) if (!keep.has(child)) child.destroy({ children: true });
+  const drawnLabels = new Set();
   root.alpha = game.user.isGM ? (Number(game.settings.get(MODULE_ID, "overlayOpacity")) || 100) / 100 : 1;
   const gs = canvas.grid.size;
   const gm = game.user.isGM;
@@ -86,6 +118,7 @@ export function draw() {
     const trap = drafts.get(saved.id) ? { ...drafts.get(saved.id), state: saved.state } : saved;
     if (!trapVisibleOnViewedLevel(trap)) continue;
     const st = trap.state;
+    const paintingThis = painting?.trapId === trap.id;
 
     // Active terrain: the GM always; players only when the trap allows it.
     for (const t of (gm || trap.playersSee !== false) ? st.terrain : []) {
@@ -96,7 +129,7 @@ export function draw() {
     }
 
     const visibleTrigger = !trap.feature && (showGM || st.revealed || st.status !== "armed" || ownsDetector(trap));
-    if (showGM && st.status === "armed") {
+    if (showGM && st.status === "armed" && !(paintingThis && painting.mode === "trigger")) {
       // Detection zone
       const trig = triggerKeys(trap);
       g.lineStyle(2, C.gold, 0.55);
@@ -107,6 +140,7 @@ export function draw() {
       }
       // Effect previews
       for (const e of trap.effects) {
+        if (paintingThis && painting.effectId === e.id) continue;
         if (e.type === "terrain") {
           g.lineStyle(2, C.ice, 0.8);
           for (const c of terrainCellsOf(trap, e)) rect(g, c, gs * 0.2, gs);
@@ -121,7 +155,7 @@ export function draw() {
       }
     }
 
-    if (visibleTrigger && trap.trigger.length) {
+    if (visibleTrigger && trap.trigger.length && !(paintingThis && painting.mode === "trigger")) {
       const spent = st.status !== "armed";
       g.lineStyle(2, spent ? C.ink : C.ember, spent ? 0.35 : 0.9);
       g.beginFill(spent ? C.ink : C.ember, spent ? 0.12 : 0.32);
@@ -145,16 +179,30 @@ export function draw() {
 
     if (showGM && trap.trigger.length) {
       const mid = triggerCentroid(trap);
-      const label = new PIXI.Text(`${trap.name}${trap.feature ? " · scene" : st.status !== "armed" ? ` · ${st.status}` : ""}`, {
-        fontFamily: "Cinzel, serif", fontSize: Math.max(12, gs * 0.26), fontWeight: "600",
-        fill: C.ink, stroke: 0x0f0d0c, strokeThickness: 4, letterSpacing: 1
-      });
-      label.anchor.set(0.5, 1);
+      const text = `${trap.name}${trap.feature ? " · scene" : st.status !== "armed" ? ` · ${st.status}` : ""}`;
+      const size = Math.max(12, gs * 0.26);
+      let cached = labels.get(trap.id);
+      if (!cached || cached.obj.destroyed || cached.text !== text || cached.size !== size) {
+        cached?.obj?.destroy?.();
+        const obj = new PIXI.Text(text, {
+          fontFamily: "Cinzel, serif", fontSize: size, fontWeight: "600",
+          fill: C.ink, stroke: 0x0f0d0c, strokeThickness: 4, letterSpacing: 1
+        });
+        obj.anchor.set(0.5, 1);
+        cached = { text, size, obj };
+        labels.set(trap.id, cached);
+      }
+      const label = cached.obj;
+      drawnLabels.add(trap.id);
       const top = Math.min(...trap.trigger.map((c) => cellTopLeft(c).y));
       label.position.set(mid.x, top - 4);
       root.addChild(label);
     }
   }
+  for (const [id, l] of labels) if (!drawnLabels.has(id)) { l.obj.destroy(); labels.delete(id); }
+  if (!previewG || previewG.destroyed) previewG = new PIXI.Graphics();
+  root.addChild(previewG);
+  paintPreview();
   if (!hoverG || hoverG.destroyed) hoverG = new PIXI.Graphics();
   root.addChild(hoverG);
   paintHover();

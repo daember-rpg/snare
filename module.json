@@ -2,7 +2,7 @@
   "id": "snare",
   "title": "Snare",
   "description": "Pathfinder 2e traps without the bookkeeping: secret detection driven by exploration activities, triggers apart from where the attack comes from, chained effects, and terrain that knows who it affects.",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "authors": [
     {
       "name": "Fernando Melo (Hello Melo Design)",
