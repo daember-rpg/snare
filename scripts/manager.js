@@ -814,6 +814,7 @@ export class SnareManager extends ApplicationV2 {
         ${t.feature ? "" : `<div class="snare-row">${field("Who can set it off", "triggeredBy", sel("triggeredBy", t.triggeredBy, [["any", "Any creature"], ["party", "Only the party"]]))}</div>
         <div class="snare-field"><span>Never sets it off (for example, whoever built it)</span><div class="snare-chips">${chips(t.triggerIgnore, "toggleIgnore")}</div></div>`}
         ${ter.map(([e, i]) => `<div class="snare-wiz-sub"><h3><i class="fa-solid fa-snowflake"></i> The ${TERRAIN[e.terrain].toLowerCase()}</h3>
+          <p class="snare-rules">${esc(terrainRules(e))}</p>
           ${field("Who it affects", `effects.${i}.affects`, sel(`effects.${i}.affects`, e.affects, [["all", "Everyone"], ["enemies", "Enemies only"], ["party", "Party only"]]))}
           <div class="snare-field"><span>These move through it normally</span><div class="snare-chips">${chips(e.exemptTokens, "toggleExempt", `data-id="${e.id}"`)}</div></div>
           <div class="snare-field"><label for="snare-trait-${e.id}">So do creatures with these traits</label>
