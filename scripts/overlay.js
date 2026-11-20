@@ -1,11 +1,20 @@
 import { MODULE_ID } from "./constants.js";
-import { getTraps, cellTopLeft, cellCenter, detectKeys, triggerKeys, terrainCellsOf, triggerCentroid, key } from "./store.js";
+import { getTraps, trapVisibleOnViewedLevel, viewedLevel, cellTopLeft, cellCenter, detectKeys, triggerKeys, terrainCellsOf, triggerCentroid, key } from "./store.js";
 
 let layer = null;
 /** Builder drafts shown live on the canvas before they are saved: trapId → trap. */
 export const drafts = new Map();
 let queued = false;
 let hover = null;
+let lastLevel = null;
+
+/** Foundry has no hook for switching the viewed floor, so watch it from the ticker. */
+let watching = false;
+export function watchLevel() {
+  if (watching) return;
+  watching = true;
+  canvas.app.ticker.add(() => { if (canvas?.ready && viewedLevel() !== lastLevel) requestDraw(); });
+}
 
 /** Live opacity while the GM drags the slider. */
 export function setOpacity(pct) {
@@ -61,8 +70,10 @@ export function draw() {
   const g = new PIXI.Graphics();
   root.addChild(g);
 
+  lastLevel = viewedLevel();
   for (const saved of getTraps(canvas.scene)) {
     const trap = drafts.get(saved.id) ? { ...drafts.get(saved.id), state: saved.state } : saved;
+    if (!trapVisibleOnViewedLevel(trap)) continue;
     const st = trap.state;
 
     // Active terrain: the GM always; players only when the trap allows it.

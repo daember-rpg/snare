@@ -1,7 +1,7 @@
 import { MODULE_ID, RANKS, VALUED, CONDITIONS, TERRAIN } from "./constants.js";
 import {
   getTrap, getTraps, updateState, cellCenter, tokenCell, cheb, triggerKeys, terrainCellsOf, triggerCentroid,
-  degreeOf, DEGREES, whisperGM, whisperOwners, announce, esc, exemptReason, cellTopLeft, isPC, isPartyToken
+  degreeOf, DEGREES, whisperGM, whisperOwners, announce, esc, exemptReason, cellTopLeft, isPC, isPartyToken, sameLevel
 } from "./store.js";
 import { onMessage, broadcastFx } from "./socket.js";
 import { requestDraw } from "./overlay.js";
@@ -135,11 +135,11 @@ function tokenPoint(doc) {
 async function resolveTargets(scene, trap, trigger) {
   if (trap.targets === "allInTrigger") {
     const keys = triggerKeys(trap);
-    const list = scene.tokens.filter((t) => t.actor && keys.has(tokenCell(t).join(",")));
+    const list = scene.tokens.filter((t) => t.actor && sameLevel(trap, t) && keys.has(tokenCell(t).join(",")));
     return list.length ? list : [trigger].filter(Boolean);
   }
   if (trap.targets === "nearestOrigin" && trap.origin) {
-    const list = scene.tokens.filter((t) => t.actor && !t.hidden);
+    const list = scene.tokens.filter((t) => t.actor && !t.hidden && sameLevel(trap, t));
     list.sort((a, b) => cheb(tokenCell(a), trap.origin) - cheb(tokenCell(b), trap.origin));
     return list.slice(0, 1);
   }
@@ -223,7 +223,7 @@ async function doBurst(scene, trap, e, trigger, originPt) {
   if (!c) { await whisperGM(`The burst of <b>${esc(trap.name)}</b> has no center set, so it was skipped.`, "fa-triangle-exclamation"); return new Set(); }
   const at = cellCenter(c);
   broadcastFx({ sceneId: scene.id, preset: e.pyre, from: originPt ?? at, at });
-  const inside = scene.tokens.filter((t) => t.actor && !t.hidden && cheb(tokenCell(t), c) <= Number(e.radius));
+  const inside = scene.tokens.filter((t) => t.actor && !t.hidden && sameLevel(trap, t) && cheb(tokenCell(t), c) <= Number(e.radius));
   const failed = new Set();
   const lines = [];
   const saveLabel = e.save[0].toUpperCase() + e.save.slice(1);
@@ -281,7 +281,7 @@ async function doTerrain(scene, trap, e) {
   const entry = await buildTerrain(scene, trap, e);
   const words = { slippery: "The floor turns slick", difficult: "Rubble covers the floor", greater: "Heavy rubble blocks the way", hazardous: "The floor turns dangerous" };
   await announce(`${words[e.terrain] ?? TERRAIN[e.terrain]}${entry.roundsLeft ? ` for ${entry.roundsLeft} rounds` : ""}.`, e.terrain === "slippery" ? "fa-snowflake" : "fa-mountain", trap.name);
-  const exempt = scene.tokens.filter((t) => t.actor).map((t) => [t, exemptReason(entry, t)]).filter(([, r]) => r);
+  const exempt = scene.tokens.filter((t) => t.actor && sameLevel(trap, t)).map((t) => [t, exemptReason(entry, t)]).filter(([, r]) => r);
   if (exempt.length) await whisperGM(`Unaffected by this terrain: ${exempt.map(([t, r]) => `${esc(t.name)} (${r})`).join(", ")}.`, "fa-shield-halved");
   return entry;
 }
@@ -299,6 +299,7 @@ async function createCostRegion(scene, trap, entry) {
     const difficulties = Object.fromEntries(actions.map((a) => [a, mult]));
     const [region] = await scene.createEmbeddedDocuments("Region", [{
       name: `Snare · ${trap.name}`, color: "#8a6a48", shapes,
+      ...(trap.sceneLevel ? { levels: [trap.sceneLevel] } : {}),
       visibility: CONST.REGION_VISIBILITY?.LAYER ?? 0,
       behaviors: [{ type: "modifyMovementCost", name: "Snare terrain", system: { difficulties } }],
       flags: { [MODULE_ID]: { terrain: { affects: entry.affects, exemptTokens: entry.exemptTokens, exemptTraits: entry.exemptTraits } } }
@@ -437,6 +438,7 @@ const UNEVEN_SLUG = "snare-uneven-ground";
 function unevenAt(scene, doc) {
   const k = tokenCell(doc).join(",");
   for (const trap of getTraps(scene)) {
+    if (!sameLevel(trap, doc)) continue;
     for (const t of trap.state.terrain) {
       if (t.terrain !== "slippery" || t.offGuard === false) continue;
       if (!t.cells.some((c) => c.join(",") === k)) continue;

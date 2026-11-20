@@ -3,7 +3,8 @@ import {
 } from "./constants.js";
 import {
   getTraps, getTrap, saveConfig, createTrap, deleteTrap, updateState, blankTrap, newEffect, pickConfig, clone,
-  dcForLevel, xpInfo, esc, key, pointCell, alliance, freshState, terrainCellsOf, tokenCell, isActiveGM
+  dcForLevel, xpInfo, esc, key, pointCell, alliance, freshState, terrainCellsOf, tokenCell, isActiveGM,
+  sceneLevels, viewedLevel
 } from "./store.js";
 import { drafts, requestDraw, setHover, setOpacity } from "./overlay.js";
 import { fireTrap, tickRound, attemptDisable, clearTerrain, activityOf, syncFeature } from "./engine.js";
@@ -96,7 +97,7 @@ export class SnareManager extends ApplicationV2 {
     // Scene features keep their terrain in step with the painted area and the terrain effects.
     const saved = getTrap(scene, t.id);
     if (!saved || (!saved.feature && saved.state.status !== "active")) return;
-    const sig = JSON.stringify([saved.feature, saved.trigger, saved.effects.filter((e) => e.type === "terrain")]);
+    const sig = JSON.stringify([saved.feature, saved.sceneLevel, saved.trigger, saved.effects.filter((e) => e.type === "terrain")]);
     if (this.#featureSig[t.id] === sig && saved.state.status === (saved.feature ? "active" : "armed")) return;
     this.#featureSig[t.id] = sig;
     await syncFeature(scene, saved);
@@ -116,10 +117,25 @@ export class SnareManager extends ApplicationV2 {
     }
   }
 
+  /** Traps made before Snare knew about floors take the floor being viewed, once. */
+  async #assignFloors() {
+    const scene = this.scene, viewed = viewedLevel();
+    if (!scene || !viewed || !sceneLevels(scene).length) return;
+    const raw = scene.getFlag(MODULE_ID, "traps") ?? {};
+    const updates = {};
+    for (const [id, t] of Object.entries(raw)) if (t?.id && !("sceneLevel" in t)) updates[`flags.${MODULE_ID}.traps.${id}.sceneLevel`] = viewed;
+    if (!Object.keys(updates).length) return;
+    await scene.update(updates);
+    if (this.draft && updates[`flags.${MODULE_ID}.traps.${this.draft.id}.sceneLevel`]) this.draft.sceneLevel = viewed;
+    const name = sceneLevels(scene).find((l) => l.id === viewed)?.name ?? "this floor";
+    ui.notifications.info(`Snare: existing traps now belong to ${name}. Change it under Floor in each trap.`);
+  }
+
   /* ---------------- rendering ---------------- */
 
   async _renderHTML() {
     await this.#loadHazards();
+    await this.#assignFloors();
     if (this.selectedId && !getTrap(this.scene, this.selectedId)) this.#select(null);
     if (!this.selectedId && this.tab === "traps" && !this.wizard) {
       const first = getTraps(this.scene)[0];
@@ -326,6 +342,7 @@ export class SnareManager extends ApplicationV2 {
 
     <section class="snare-sec"><h3><i class="fa-solid fa-diamond"></i>Trap</h3>
       <div class="snare-row">${field("Level", "level", num("level", t.level, -1, 25))}${field("Complexity", "kind", sel("kind", t.kind, [["simple", "Simple"], ["complex", "Complex"]]))}${field("Party level", "partyLevel", num("partyLevel", t.partyLevel, 1, 20))}</div>
+      ${this.#levelField(t)}
       <div class="snare-xp"><span>XP</span><b>${xp.xp == null ? "—" : xp.xp}</b><span class="snare-muted">${xp.text}</span></div>
       ${t.notes ? `<p class="snare-notes">${esc(t.notes)}</p>` : ""}
       ${hasTerrain ? `<div class="snare-opts">
@@ -364,6 +381,13 @@ export class SnareManager extends ApplicationV2 {
     </section>
 
     ${t.feature ? "" : this.#disableHTML(t, sug)}`;
+  }
+
+  #levelField(t) {
+    const levels = sceneLevels(this.scene);
+    if (!levels.length) return "";
+    const opts = [["", "Every floor"], ...levels.map((l) => [l.id, l.name || l.id])];
+    return field("Floor", "sceneLevel", sel("sceneLevel", t.sceneLevel ?? "", opts), "Only tokens on this floor trigger it, and only who views this floor sees its markings.");
   }
 
   #disableHTML(t, sug) {
@@ -492,6 +516,7 @@ export class SnareManager extends ApplicationV2 {
     for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
     const last = parts.at(-1);
     o[last] = el.dataset.type === "num" ? (el.value === "" ? 0 : Number(el.value)) : el.dataset.type === "bool" ? el.checked : el.value;
+    if (path === "sceneLevel" && !el.value) o[last] = null;
   }
 
   async #action(action, el) {
@@ -521,7 +546,7 @@ export class SnareManager extends ApplicationV2 {
       }
       case "duplicate": {
         this.#flush();
-        const copy = { ...clone(pickConfig(t)), id: foundry.utils.randomID(), name: `${t.name} (copy)`, state: freshState() };
+        const copy = { ...clone(pickConfig(t)), id: foundry.utils.randomID(), name: `${t.name} (copy)`, state: freshState(), sceneLevel: viewedLevel() ?? t.sceneLevel };
         await createTrap(scene, copy);
         this.#select(copy.id);
         return this.render();
@@ -593,7 +618,7 @@ export class SnareManager extends ApplicationV2 {
     const from = this.createFrom;
     if (from.startsWith("lib:")) {
       const item = (game.settings.get(MODULE_ID, "library") ?? [])[Number(from.slice(4))];
-      if (item) trap = { ...blankTrap(item.level), ...clone(item), id: foundry.utils.randomID(), state: freshState() };
+      if (item) trap = { ...blankTrap(item.level), ...clone(item), id: foundry.utils.randomID(), state: freshState(), sceneLevel: viewedLevel() };
       trap.effects.forEach((e) => (e.id = foundry.utils.randomID()));
     } else if (from.startsWith("comp:")) {
       trap = await this.#fromCompendium(from.slice(5), level) ?? trap;
@@ -770,10 +795,11 @@ export class SnareManager extends ApplicationV2 {
       if (e.type === "condition") return `${e.appliesTo === "failed" ? "whoever fails or is hit" : "the target"} becomes <b>${CONDITIONS.find(([s]) => s === e.condition)?.[1] ?? e.condition}${VALUED.includes(e.condition) ? ` ${e.value}` : ""}</b>`;
       return `the floor becomes <b>${TERRAIN[e.terrain].toLowerCase()}</b>${e.affects !== "all" ? ` (${e.affects === "enemies" ? "enemies only" : "party only"})` : ""}${e.exemptTokens.length || e.exemptTraits.length ? ", with exceptions" : ""}. ${esc(terrainRules(e))}`;
     });
+    const floor = t.sceneLevel ? sceneLevels(this.scene).find((l) => l.id === t.sceneLevel)?.name : null;
     const find = t.minProf === 0 ? `Anyone can notice it (DC ${t.stealthDC}).` : `Found only by characters Searching with ${RANKS[t.minProf]} Perception (DC ${t.stealthDC}).`;
     const dis = t.noDisable ? "" : t.disable.map((d) => `${cap(d.skill)} DC ${d.dc}${d.minProf ? ` (${RANKS[d.minProf]})` : ""}`).join(" or ");
     return `<p>${parts.join("")}</p>${lines.length ? `<ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>` : `<p class="snare-muted">No effects yet. Add them in the builder after finishing.</p>`}
-      <p>${find}</p><p>${t.noDisable ? "It can't be disabled." : `Disable: ${dis || "nothing set"}.`}</p>`;
+      <p>${find}</p><p>${t.noDisable ? "It can't be disabled." : `Disable: ${dis || "nothing set"}.`}</p>${floor ? `<p>Only on <b>${esc(floor)}</b>.</p>` : ""}`;
   }
 
   #wizardHTML() {

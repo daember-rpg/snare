@@ -1,6 +1,6 @@
 import { MODULE_ID } from "./constants.js";
 import {
-  getTraps, key, pointCell, tokenCenterAt, cellCenter, triggerKeys, detectKeys, canTrigger, isPC,
+  getTraps, sameLevel, key, pointCell, tokenCenterAt, cellCenter, triggerKeys, detectKeys, canTrigger, isPC,
   exemptReason, degreeOf, DEGREES, esc, announce, whisperGM
 } from "./store.js";
 import { rollDetection } from "./engine.js";
@@ -18,7 +18,7 @@ export function registerMovement() {
     try {
       if (bypass.has(doc.id) || !doc.actor || !doc.parent) return;
       const scene = doc.parent;
-      const traps = getTraps(scene);
+      const traps = getTraps(scene).filter((t) => sameLevel(t, doc));
       if (!traps.length) return;
       const plan = buildPath(doc, movement);
       if (!plan.cells.length || !needsSnare(scene, traps, doc, plan.cells)) return;
@@ -91,7 +91,7 @@ function needsSnare(scene, traps, doc, cells) {
 }
 
 async function handleMove(scene, doc, movement, plan) {
-  const traps = getTraps(scene);
+  const traps = getTraps(scene).filter((t) => sameLevel(t, doc));
   const pc = isPC(doc);
   let stop = plan.cells.length - 1;
   let fire = null;

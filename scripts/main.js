@@ -1,7 +1,7 @@
 import { MODULE_ID } from "./constants.js";
 import { initSocket, onMessage } from "./socket.js";
 import { playFx } from "./pyre.js";
-import { draw, requestDraw } from "./overlay.js";
+import { draw, requestDraw, watchLevel } from "./overlay.js";
 import { registerMovement } from "./movement.js";
 import { registerEngine, patchMovementCost, tickRound, fireTrap, refreshUneven } from "./engine.js";
 import { SnareManager } from "./manager.js";
@@ -45,6 +45,7 @@ Hooks.once("ready", () => {
 
 Hooks.on("canvasReady", () => {
   draw();
+  watchLevel();
   if (SnareManager.instance?.rendered) SnareManager.instance.render();
 });
 

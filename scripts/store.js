@@ -3,7 +3,7 @@ import { MODULE_ID, LEVEL_DC, XP_SIMPLE } from "./constants.js";
 /** Keys the builder edits. Everything else lives under `state` and is written only by the GM's engine. */
 export const CONFIG_KEYS = ["name", "level", "kind", "magical", "partyLevel", "stealthDC", "minProf", "detectRadius",
   "trigger", "origin", "triggeredBy", "triggerIgnore", "targets", "confirm", "after", "rearmRounds",
-  "effects", "disable", "successes", "critFailTriggers", "notes", "feature", "noDisable", "playersSee"];
+  "effects", "disable", "successes", "critFailTriggers", "notes", "feature", "noDisable", "playersSee", "sceneLevel"];
 
 export const clone = (o) => foundry.utils.deepClone(o);
 export const key = (c) => `${c[0]},${c[1]}`;
@@ -29,7 +29,7 @@ export function blankTrap(level = 1) {
     trigger: [], origin: null, triggeredBy: "any", triggerIgnore: [], targets: "triggering", confirm: true,
     after: "oneshot", rearmRounds: 3,
     effects: [], disable: [{ skill: "thievery", dc, minProf: 1 }], successes: 1, critFailTriggers: true, notes: "",
-    feature: false, noDisable: false, playersSee: true,
+    feature: false, noDisable: false, playersSee: true, sceneLevel: viewedLevel(),
     state: freshState()
   };
 }
@@ -48,6 +48,7 @@ function normalize(raw) {
   const base = blankTrap(raw.level ?? 1);
   const t = foundry.utils.mergeObject(base, raw, { inplace: false, insertKeys: true, insertValues: true });
   t.state = foundry.utils.mergeObject(freshState(), raw.state ?? {}, { inplace: false });
+  if (!("sceneLevel" in raw)) t.sceneLevel = null;
   for (const k of ["trigger", "triggerIgnore", "effects", "disable"]) if (!Array.isArray(t[k])) t[k] = [];
   for (const k of ["detectedBy", "rolledBy", "terrain"]) if (!Array.isArray(t.state[k])) t.state[k] = [];
   return t;
@@ -115,6 +116,22 @@ export function triggerCentroid(trap) {
   if (!trap.trigger.length) return null;
   const pts = trap.trigger.map(cellCenter);
   return { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length };
+}
+
+/* ---------------- scene levels (Foundry V14) ---------------- */
+
+export const viewedLevel = () => canvas?.level?.id ?? null;
+export function sceneLevels(scene = canvas?.scene) {
+  try { return Array.from(scene?.levels ?? []).filter((l) => l?.id); } catch (err) { return []; }
+}
+/** A trap on a floor only touches tokens on that floor. Tokens or traps without a floor match everything. */
+export function sameLevel(trap, doc) {
+  const lv = trap?.sceneLevel, tl = doc?.level ?? null;
+  return !lv || !tl || lv === tl;
+}
+export function trapVisibleOnViewedLevel(trap) {
+  const viewed = viewedLevel();
+  return !trap.sceneLevel || !viewed || trap.sceneLevel === viewed;
 }
 
 /* ---------------- rules helpers ---------------- */
